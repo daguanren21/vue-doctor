@@ -114,6 +114,58 @@ ESLint ignore 仅影响 ESLint 检查，Vue 与组件契约分析仍使用 Docto
 
 Vue 模板正文允许比较符号、字符列表等场景中的字面量 `<`；Vue descriptor 与模板 AST 均保留该文本时，Doctor 不再把它误判为解析失败。错误闭合标签、重复顶层块和空 SFC 仍保留源码覆盖不足，但不会阻止可读字节交给项目 ESLint。
 
+## 可选的项目死代码分析
+
+`@vue-doctor/rule-pack-dead-code` 通过 Knip 提供按需开启的项目死代码分析。它是独立的可选包，**不会随默认 runner 自动捆绑或启用**。当前 workspace 版本为 `0.0.0`，尚未发布。按[快速上手](../../README.zh-CN.md#快速上手)构建本仓库并链接 `vue-doctor` 后，还需将构建好的规则包链接到消费项目：
+
+```bash
+pnpm --dir /path/to/your-project link /absolute/path/to/vue-doctor/packages/rule-pack-dead-code
+```
+
+在可执行的 `doctor.config.ts` 中注册：
+
+```ts
+import { defineDoctorConfig } from 'vue-doctor'
+import { createDeadCodeRulePack } from '@vue-doctor/rule-pack-dead-code'
+
+export default defineDoctorConfig({
+  rulePacks: [createDeadCodeRulePack({ timeoutMs: 120000 })],
+  rules: {
+    'dead-code/unused-export': 'error',
+    'dead-code/unused-type': 'off'
+  },
+  failOn: 'error',
+  failOnIncompleteCoverage: true
+})
+```
+
+注册规则包后，以下四项检查的默认严重度均为 `warning`：
+
+| Code | 报告内容 |
+| --- | --- |
+| `dead-code/unused-file` | 从配置的入口点不可达的文件。 |
+| `dead-code/unused-export` | 在项目图中没有消费者的导出值。 |
+| `dead-code/unused-type` | 在项目图中没有消费者的导出类型、接口和枚举。 |
+| `dead-code/duplicate-export` | 同一模块中被多次导出的符号。 |
+
+通过 Doctor 的 `rules` 修改严重度，或将任意 code 设为 `'off'`。四项全部关闭或目标文件集合为空时，不执行 Knip 分析。
+
+`createDeadCodeRulePack()` 默认使用 Knip 的配置发现机制，超时为 `120000` 毫秒（两分钟）。可选的 `configFile` 用于选择已有的 Knip 配置，例如 `createDeadCodeRulePack({ configFile: './knip.json' })`；支持相对 Doctor 项目根目录的路径或绝对路径。`timeoutMs` 用于调整超时。Knip 配置与选择 Doctor 配置的 CLI `--config` 相互独立。
+
+项目图由 Knip 原生的 `entry`、`project`、`ignore` 和插件配置决定。Doctor 控制这四类受支持检查是否运行及报告严重度，覆盖 Knip 针对这些检查的 `include`、`exclude` 和 `rules` 设置。图的输入在 Knip 中配置，检查开关与严重度在 Doctor 中配置。
+
+即使使用 `--scope`、`--changed` 或显式选择文件，分析仍会从磁盘读取**配置所定义的完整项目图**。只有诊断结果按 Doctor 的目标文件过滤；目标范围外的消费者仍参与分析。缩小目标范围不保证图分析更快。
+
+Knip 报告的 import 缺失或无法解析、配置或插件错误，以及覆盖不足相关提示，都会使所有启用的死代码检查变为 `unavailable`；分析超时也会如此。报告保留必需的 `skippedChecks` 和覆盖不足，而不是判定项目干净。示例中的 `failOnIncompleteCoverage: true` 会让此类覆盖缺口导致运行失败，即使没有产生任何诊断。
+
+使用 Knip 原生 `workspaces` 配置时，应把 `entry`、`project` 模式放在相应工作区条目中。被忽略的顶层模式（`entry-top-level` / `project-top-level`）属于覆盖缺口，不代表这些路径已成功检查。
+
+这些图覆盖检查依赖 Knip 报告的缺口；完整项目图分析不等于全项目语法验证。Doctor 现有的源码解析覆盖仍仅限于选中的源码目标。
+
+只加载受信任的可执行 Knip 配置和插件。分析在子进程中运行，以隔离其输出与 Doctor 报告。超时会终止直接的 Knip 工作进程并释放 Doctor 的报告通道，但不会管理项目配置自行启动的任意辅助进程。这种隔离**不是安全沙箱**。
+
+这些诊断来自静态项目图：动态入口或 Knip 无法发现的消费者可能导致误报。删除或合并代码前，请先确认图配置与实际使用情况。本规则包不执行自动修复。
+
 ## CI 与 CLI 覆盖
 
 ```bash

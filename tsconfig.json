@@ -41,6 +41,9 @@
       "path": "./packages/rule-pack-eslint"
     },
     {
+      "path": "./packages/rule-pack-dead-code"
+    },
+    {
       "path": "./packages/rule-pack-vue"
     },
     {

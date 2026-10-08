@@ -6,6 +6,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+      '@vue-doctor/rule-pack-dead-code': new URL('./packages/rule-pack-dead-code/src/index.ts', import.meta.url).pathname,
       '@vue-doctor/rule-pack-eslint': new URL('./packages/rule-pack-eslint/src/index.ts', import.meta.url).pathname,
       '@vue-doctor/rules-eslint': new URL('./packages/rules-eslint/src/index.ts', import.meta.url).pathname,
       '@vue-doctor/inspector-protocol': new URL('./packages/inspector-protocol/src/index.ts', import.meta.url).pathname,

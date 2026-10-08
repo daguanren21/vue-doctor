@@ -114,6 +114,58 @@ Readable source remains eligible for project ESLint even when Vue Doctor's Vue p
 
 Vue template text may contain a literal `<`, such as a comparison or character list. Doctor retains that text when both the Vue descriptor and template AST preserve it. Malformed closing tags, duplicate top-level blocks and empty SFCs still leave source analysis incomplete; this does not prevent readable bytes from reaching project ESLint.
 
+## Optional project dead-code analysis
+
+`@vue-doctor/rule-pack-dead-code` uses Knip for opt-in project dead-code analysis. This separate, optional package is **not bundled with or automatically enabled by the default runner**. The current workspace version is `0.0.0` and is not published. After building this checkout and linking `vue-doctor` as described in the [quick start](../../README.md#quick-start), also link the built rule pack into your project:
+
+```bash
+pnpm --dir /path/to/your-project link /absolute/path/to/vue-doctor/packages/rule-pack-dead-code
+```
+
+Register it in an executable `doctor.config.ts`:
+
+```ts
+import { defineDoctorConfig } from 'vue-doctor'
+import { createDeadCodeRulePack } from '@vue-doctor/rule-pack-dead-code'
+
+export default defineDoctorConfig({
+  rulePacks: [createDeadCodeRulePack({ timeoutMs: 120000 })],
+  rules: {
+    'dead-code/unused-export': 'error',
+    'dead-code/unused-type': 'off'
+  },
+  failOn: 'error',
+  failOnIncompleteCoverage: true
+})
+```
+
+All four checks default to `warning` when the pack is registered:
+
+| Code | Reports |
+| --- | --- |
+| `dead-code/unused-file` | Files not reachable from configured entry points. |
+| `dead-code/unused-export` | Exported values without consumers in the project graph. |
+| `dead-code/unused-type` | Exported types, interfaces and enums without consumers in the project graph. |
+| `dead-code/duplicate-export` | Symbols exported more than once from the same module. |
+
+Use Doctor's `rules` to change severity or set any code to `'off'`. Turning all four off, or selecting no target files, skips Knip analysis entirely.
+
+`createDeadCodeRulePack()` uses Knip's configuration discovery and a `120000` ms (two-minute) timeout by default. The optional `configFile` selects an existing Knip config, for example `createDeadCodeRulePack({ configFile: './knip.json' })`; paths are relative to Doctor's project root or absolute. `timeoutMs` changes the timeout. This Knip config is separate from CLI `--config`, which selects Doctor's configuration.
+
+Knip's native `entry`, `project`, `ignore` and plugin configuration define the project graph. Doctor controls which of the four supported issue types run and their reported severity, overriding Knip's `include`, `exclude` and `rules` settings for these checks. Configure graph inputs in Knip and enable, disable or change severity in Doctor.
+
+Analysis reads the **full configured project graph from disk**, even under `--scope`, `--changed` or an explicit file selection. Only diagnostics are filtered to Doctor's target files; consumers outside those targets still participate in analysis. A narrower selection does not promise a faster graph analysis.
+
+Missing or unresolved imports, configuration or plugin errors, and coverage-related hints reported by Knip make all active dead-code checks `unavailable`, as does an analysis timeout. The report includes required `skippedChecks` and incomplete coverage, not a clean success. The example's `failOnIncompleteCoverage: true` makes that coverage gap fail the run even when no findings are reported.
+
+With native Knip `workspaces` configuration, place `entry` and `project` patterns inside the applicable workspace entries. Ignored top-level patterns (`entry-top-level` / `project-top-level`) are coverage gaps, not successful scans of those paths.
+
+These graph coverage checks rely on gaps reported by Knip; whole-project graph analysis is not whole-project syntax validation. Doctor's existing source-parse coverage remains limited to selected source targets.
+
+Only load trusted executable Knip configurations and plugins. Analysis runs in a child process to keep its output separate from Doctor's report. A timeout stops the direct Knip worker and releases Doctor's report channels; it does not manage arbitrary helper processes started by project configuration. This isolation is **not a security sandbox**.
+
+These are static-graph findings: dynamic entry points or consumers that Knip cannot discover can cause false positives. Confirm the configured graph and actual usage before deleting or consolidating code. This pack does not apply automatic fixes.
+
 ## CI and CLI overrides
 
 ```bash
