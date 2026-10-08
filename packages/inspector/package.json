@@ -1,0 +1,47 @@
+{
+  "name": "@vue-doctor/inspector",
+  "version": "0.0.0",
+  "type": "module",
+  "files": ["dist"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    },
+    "./devframe": {
+      "types": "./dist/devframe.d.mts",
+      "import": "./dist/devframe.mjs"
+    },
+    "./host": {
+      "types": "./dist/host.d.mts",
+      "import": "./dist/host.mjs"
+    },
+    "./mcp": {
+      "types": "./dist/mcp.d.mts",
+      "import": "./dist/mcp.mjs"
+    },
+    "./protocol": {
+      "types": "./dist/protocol.d.mts",
+      "import": "./dist/protocol.mjs"
+    },
+    "./store": {
+      "types": "./dist/report-store.d.mts",
+      "import": "./dist/report-store.mjs"
+    }
+  },
+  "scripts": {
+    "build": "tsdown src/index.ts src/devframe.ts src/host.ts src/mcp.ts src/protocol.ts src/report-store.ts --format esm --dts",
+    "preview": "node scripts/preview.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@devframes/agentic": "1.2.1",
+    "@devframes/hub": "1.2.1",
+    "@vue-doctor/core": "workspace:*",
+    "devframe": "1.2.1",
+    "@vue-doctor/inspector-protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@devframes/hub-ui": "1.2.1"
+  }
+}

@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 228 40" fill="none" role="img" aria-label="Vue Doctor">
+  <title>Vue Doctor</title>
+  <g transform="translate(2 4)">
+    <path
+      d="M9.5 9.5 L16 23.5 L22.5 9.5"
+      stroke="#42d392"
+      stroke-width="2.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+    <path
+      d="M12 15 H20"
+      stroke="#42d392"
+      stroke-width="1.6"
+      stroke-linecap="round"
+      opacity="0.9"
+    />
+    <circle cx="16" cy="15" r="1.85" fill="#42d392"/>
+  </g>
+  <text
+    x="44"
+    y="26.5"
+    fill="#e8ecf1"
+    font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif"
+    font-size="18"
+    font-weight="650"
+    letter-spacing="-0.01em"
+  >Vue Doctor</text>
+</svg>

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <!-- 16–32px: V + probe; wider side inset for crop safety -->
+  <path
+    d="M9.25 9 L16 24 L22.75 9"
+    stroke="#42b883"
+    stroke-width="2.75"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <circle cx="16" cy="14.75" r="2.15" fill="#42b883"/>
+</svg>

@@ -1,0 +1,32 @@
+{
+  "name": "@vue-doctor/rules-eslint",
+  "version": "0.0.0",
+  "type": "module",
+  "engines": {
+    "node": "^20.19.0 || ^22.13.0 || >=24"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@typescript-eslint/parser": "8.71.1",
+    "@vue-doctor/core": "workspace:*",
+    "@vue-doctor/rules": "workspace:*",
+    "@vue-doctor/source": "workspace:*",
+    "eslint": "10.12.0",
+    "vue-eslint-parser": "10.4.1"
+  },
+  "peerDependencies": {
+    "typescript": ">=4.9.5 <6.1.0"
+  },
+  "scripts": {
+    "build": "tsdown src/index.ts --format esm --dts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  }
+}

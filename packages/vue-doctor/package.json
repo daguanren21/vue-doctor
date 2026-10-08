@@ -1,0 +1,76 @@
+{
+  "name": "vue-doctor",
+  "version": "0.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "bin": {
+    "vue-doctor": "./dist/cli.mjs"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    },
+    "./vite": {
+      "types": "./dist/vite.d.mts",
+      "import": "./dist/vite.mjs"
+    },
+    "./rules": {
+      "types": "./dist/rules.d.mts",
+      "import": "./dist/rules.mjs"
+    },
+    "./webpack": {
+      "types": "./dist/webpack.d.mts",
+      "import": "./dist/webpack.mjs"
+    },
+    "./rspack": {
+      "types": "./dist/rspack.d.mts",
+      "import": "./dist/rspack.mjs"
+    },
+    "./rollup": {
+      "types": "./dist/rollup.d.mts",
+      "import": "./dist/rollup.mjs"
+    },
+    "./rolldown": {
+      "types": "./dist/rolldown.d.mts",
+      "import": "./dist/rolldown.mjs"
+    },
+    "./esbuild": {
+      "types": "./dist/esbuild.d.mts",
+      "import": "./dist/esbuild.mjs"
+    },
+    "./unplugin": {
+      "types": "./dist/unplugin.d.mts",
+      "import": "./dist/unplugin.mjs"
+    },
+    "./rules-eslint": {
+      "types": "./dist/rules-eslint.d.mts",
+      "import": "./dist/rules-eslint.mjs"
+    }
+  },
+  "dependencies": {
+    "@vue-doctor/component-library": "workspace:*",
+    "@vue-doctor/core": "workspace:*",
+    "@vue-doctor/diagnostic-reference": "workspace:*",
+    "@vue-doctor/inspector": "workspace:*",
+    "@vue-doctor/rule-pack-component-library": "workspace:*",
+    "@vue-doctor/runner": "workspace:*",
+    "@vue-doctor/rules": "workspace:*",
+    "@vue-doctor/source": "workspace:*",
+    "@vue-doctor/unplugin": "workspace:*",
+    "agent-install": "^0.0.8",
+    "cac": "7.0.0",
+    "@vue-doctor/inspector-ui": "workspace:*",
+    "@vue-doctor/rules-eslint": "workspace:*"
+  },
+  "scripts": {
+    "build": "tsdown src/index.ts src/rules.ts src/rules-eslint.ts src/vite.ts src/webpack.ts src/rspack.ts src/rollup.ts src/rolldown.ts src/esbuild.ts src/unplugin.ts src/cli.ts --format esm --dts && node ./scripts/copy-skills.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "files": [
+    "dist",
+    "skills"
+  ]
+}

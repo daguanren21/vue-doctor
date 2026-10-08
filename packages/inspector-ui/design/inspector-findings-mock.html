@@ -1,0 +1,983 @@
+<!doctype html>
+<!--
+  Vue Doctor Inspector — primary findings screen, interactive design mock.
+  Self-contained: no build, no network. Open in a browser.
+  - Dark default, light toggle in header (persisted).
+  - Footer "preview state" selector demos clean / incomplete / blocked / loading / error / filter-empty.
+  - Tree filters the list; Overview nodes swap Coverage / Skipped-checks views.
+  - Below 860 px: filters become a left sheet, evidence becomes a bottom sheet.
+  Mock data only. Snippet rendering shows the target state (schema-dependent, see design README §6).
+-->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Vue Doctor Inspector — Findings (design mock)</title>
+<style>
+/* ---------- tokens (design README §4.1) ---------- */
+:root, [data-theme="dark"] {
+  color-scheme: dark;
+  --bg-base:#0f1115; --bg-surface:#151921; --bg-raised:#1c222b; --bg-overlay:#222833; --bg-code:#0a0c10;
+  --border-subtle:#262c37; --border-strong:#39404c;
+  --text-primary:#e8ecf1; --text-secondary:#9aa5b3; --text-faint:#78818e;
+  --accent:#42d392; --accent-fg:#42d392; --accent-muted:rgb(66 211 146 / .12);
+  --error-fg:#f298a0; --error-bg:#3a2026;
+  --warning-fg:#e3b341; --warning-bg:#3a2e1a;
+  --info-fg:#7fb8e8; --info-bg:#1d2f42;
+  --shadow-overlay:0 4px 16px rgb(0 0 0 / .28);
+  --shadow-sheet:0 -8px 32px rgb(0 0 0 / .4);
+}
+[data-theme="light"] {
+  color-scheme: light;
+  --bg-base:#f2f4f7; --bg-surface:#ffffff; --bg-raised:#e9edf2; --bg-overlay:#ffffff; --bg-code:#f6f8fa;
+  --border-subtle:#e0e4ea; --border-strong:#c4ccd6;
+  --text-primary:#1c2430; --text-secondary:#556170; --text-faint:#6e7781;
+  --accent:#42b883; --accent-fg:#157347; --accent-muted:rgb(66 184 131 / .14);
+  --error-fg:#b13040; --error-bg:#fbe9eb;
+  --warning-fg:#8a5a00; --warning-bg:#faf0d7;
+  --info-fg:#1d6fa8; --info-bg:#e4f0fa;
+  --shadow-overlay:0 4px 16px rgb(15 23 42 / .12);
+  --shadow-sheet:0 -8px 32px rgb(15 23 42 / .18);
+}
+
+/* ---------- base ---------- */
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; }
+body {
+  font: 13px/1.4 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--bg-base); color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+}
+.mono { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; }
+.num { font-variant-numeric: tabular-nums; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+button:focus-visible, input:focus-visible, [tabindex="0"]:focus-visible, select:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 1px;
+}
+.ic { width: 15px; height: 15px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.ic-xs { width: 12px; height: 12px; }
+.ic-lg { width: 18px; height: 18px; }
+
+.app { display: flex; flex-direction: column; height: 100dvh; min-width: 320px; }
+
+/* ---------- header (40px) ---------- */
+.hd {
+  height: 40px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 10px;
+  background: var(--bg-surface); border-bottom: 1px solid var(--border-subtle);
+}
+.hd-brand { display: flex; align-items: center; gap: 7px; min-width: 0; font-weight: 600; }
+.hd-mark {
+  width: 20px; height: 20px; display: grid; place-items: center; flex: none;
+  border: 1px solid var(--accent); border-radius: 4px; color: var(--accent-fg);
+}
+.hd-title { white-space: nowrap; }
+.hd-proj { color: var(--text-secondary); font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hd-status { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
+.hd-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: none; }
+.hd-dot.err { background: var(--error-fg); }
+.hd-dot.busy { background: var(--warning-fg); }
+.hd-search {
+  flex: 1 1 auto; max-width: 560px; min-width: 120px; height: 28px; margin-left: 12px;
+  display: flex; align-items: center; gap: 6px; padding: 0 8px;
+  background: var(--bg-base); border: 1px solid var(--border-subtle); border-radius: 6px;
+  color: var(--text-faint);
+}
+.hd-search input { flex: 1; min-width: 0; background: none; border: 0; outline: none; color: var(--text-primary); font-size: 12px; }
+.hd-search input::placeholder { color: var(--text-faint); }
+.hd-kbd {
+  font: 10px ui-monospace, monospace; color: var(--text-faint); border: 1px solid var(--border-subtle);
+  border-radius: 3px; padding: 0 4px; line-height: 16px;
+}
+.hd-actions { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+.hbtn {
+  height: 28px; min-width: 28px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--bg-raised);
+  color: var(--text-secondary); font-size: 11px;
+}
+.hbtn:hover { color: var(--text-primary); border-color: var(--border-strong); }
+.hbtn .ic { width: 14px; height: 14px; }
+.spin .ic { animation: rot 1s linear infinite; }
+@keyframes rot { to { transform: rotate(360deg); } }
+.hd-filters-btn { display: none; }
+
+/* ---------- coverage banner (34px) ---------- */
+.banner {
+  flex: none; min-height: 34px; display: flex; align-items: center; gap: 8px; padding: 4px 12px;
+  font-size: 12px; border-bottom: 1px solid var(--border-subtle);
+}
+.banner.partial { background: var(--warning-bg); color: var(--warning-fg); }
+.banner.blocked { background: var(--error-bg); color: var(--error-fg); }
+.banner a, .banner button.link {
+  color: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; white-space: nowrap;
+}
+.banner .sep { opacity: .5; }
+
+/* ---------- main 3-pane ---------- */
+.main {
+  flex: 1; min-height: 0; display: grid;
+  grid-template-columns: 232px minmax(340px, 5fr) minmax(420px, 6fr);
+}
+.app.rail .main { grid-template-columns: 48px minmax(340px, 5fr) minmax(420px, 6fr); }
+
+/* ---------- sidebar / tree ---------- */
+.sb { min-height: 0; overflow: auto; background: var(--bg-surface); border-right: 1px solid var(--border-subtle); padding: 6px 4px 12px; }
+.sb-top { display: flex; justify-content: flex-end; padding: 0 4px 4px; }
+.tsec {
+  margin: 8px 4px 2px; font-size: 10px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--text-faint); padding: 0 6px; line-height: 22px;
+}
+.tnode {
+  width: 100%; display: flex; align-items: center; gap: 5px; min-height: 26px; padding: 2px 6px;
+  border-radius: 4px; border-left: 2px solid transparent;
+  color: var(--text-secondary); font-size: 12px; text-align: left;
+}
+.tnode:hover { background: var(--bg-raised); color: var(--text-primary); }
+.tnode.on { background: var(--accent-muted); color: var(--text-primary); border-left-color: var(--accent); border-radius: 0 4px 4px 0; }
+.tnode .ic { width: 13px; height: 13px; color: var(--text-faint); }
+.tnode.on .ic { color: var(--accent-fg); }
+.tnode .tlabel { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tcount { font: 11px ui-monospace, monospace; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.tnode[data-depth="2"] { padding-left: 22px; }
+.tnode[data-depth="3"] { padding-left: 38px; }
+.tchev { transition: transform .15s cubic-bezier(.25,1,.5,1); }
+.tnode[aria-expanded="false"] .tchev { transform: rotate(-90deg); }
+.tkids { overflow: hidden; }
+.tchip { font-size: 9px; font-weight: 600; padding: 1px 5px; border-radius: 8px; text-transform: uppercase; letter-spacing: .03em; }
+.tchip.warn { background: var(--warning-bg); color: var(--warning-fg); }
+/* rail */
+.sb-rail { display: none; }
+.app.rail .sb { padding: 6px 4px; }
+.app.rail .sb-full { display: none; }
+.app.rail .sb-rail { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.rbtn {
+  position: relative; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 6px; color: var(--text-faint);
+}
+.rbtn:hover { background: var(--bg-raised); color: var(--text-primary); }
+.rbtn.on { color: var(--accent-fg); background: var(--accent-muted); }
+.rbtn .dot { position: absolute; top: 5px; right: 5px; width: 6px; height: 6px; border-radius: 50%; }
+.rbtn .dot.e { background: var(--error-fg); } .rbtn .dot.w { background: var(--warning-fg); }
+.rsep { width: 20px; border-top: 1px solid var(--border-subtle); margin: 4px 0; }
+
+/* ---------- finding list ---------- */
+.list { min-height: 0; display: flex; flex-direction: column; background: var(--bg-base); border-right: 1px solid var(--border-subtle); }
+.lt {
+  flex: none; min-height: 44px; display: flex; align-items: center; gap: 8px; padding: 4px 12px;
+  border-bottom: 1px solid var(--border-subtle); flex-wrap: wrap;
+}
+.lt-title { font-size: 14px; font-weight: 600; }
+.lt-count { font-size: 11px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.lt-spacer { flex: 1; }
+.chip {
+  display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 4px 0 8px;
+  background: var(--accent-muted); color: var(--accent-fg); border-radius: 4px; font-size: 11px; font-weight: 500;
+}
+.chip button { display: grid; place-items: center; width: 16px; height: 16px; border-radius: 3px; color: inherit; opacity: .7; }
+.chip button:hover { opacity: 1; background: rgb(0 0 0 / .15); }
+.switch { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-secondary); }
+.sw {
+  position: relative; width: 30px; height: 17px; border-radius: 9px; background: var(--border-strong);
+  transition: background .15s; flex: none;
+}
+.sw[aria-checked="true"] { background: var(--accent); }
+.sw::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%;
+  background: #fff; transition: transform .15s cubic-bezier(.25,1,.5,1);
+}
+.sw[aria-checked="true"]::after { transform: translateX(13px); }
+.lbtn {
+  height: 26px; padding: 0 8px; display: inline-flex; align-items: center; gap: 5px;
+  border: 1px solid var(--border-subtle); border-radius: 4px; background: transparent;
+  color: var(--text-secondary); font-size: 11px;
+}
+.lbtn:hover:not(:disabled) { background: var(--bg-raised); color: var(--text-primary); }
+.lbtn:disabled { opacity: .45; cursor: default; }
+.lbtn.accent { border-color: var(--accent); color: var(--accent-fg); background: var(--accent-muted); }
+.lbtn.danger { border-color: var(--error-fg); color: var(--error-fg); background: var(--error-bg); }
+.rows { flex: 1; min-height: 0; overflow: auto; }
+.gh {
+  position: sticky; top: 0; z-index: 2; display: flex; gap: 8px; align-items: baseline;
+  padding: 4px 12px; background: var(--bg-surface); border-bottom: 1px solid var(--border-subtle);
+  font-size: 10px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--text-faint);
+}
+.row {
+  position: relative; width: 100%; display: block; text-align: left; padding: 8px 12px 8px 14px;
+  border-bottom: 1px solid var(--border-subtle); border-left: 3px solid transparent;
+}
+.row::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--sev, transparent); }
+.row:hover { background: var(--bg-surface); }
+.row.on { background: var(--accent-muted); border-left-color: var(--accent); }
+.row.on::before { background: var(--accent); }
+.row-l1 { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.row-meta { margin-left: auto; display: flex; align-items: center; gap: 6px; flex: none; font-size: 10px; color: var(--text-faint); font-family: ui-monospace, monospace; }
+.row-msg { margin: 3px 0 2px; font-size: 13px; line-height: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-path { font-size: 11px; color: var(--text-faint); font-family: ui-monospace, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conf-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+.conf-dot.high { background: var(--accent); } .conf-dot.medium { background: var(--warning-fg); } .conf-dot.low { background: var(--text-faint); }
+
+/* severity badge */
+.badge {
+  display: inline-flex; align-items: center; gap: 3px; height: 17px; padding: 0 5px; border-radius: 3px;
+  font-size: 9px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; flex: none;
+}
+.badge .ic { width: 10px; height: 10px; }
+.badge.error { background: var(--error-bg); color: var(--error-fg); }
+.badge.warning { background: var(--warning-bg); color: var(--warning-fg); }
+.badge.info { background: var(--info-bg); color: var(--info-fg); }
+.code { font-size: 11px; color: var(--text-secondary); font-family: ui-monospace, monospace; }
+
+/* ---------- empty states ---------- */
+.empty { min-height: 100%; display: grid; place-content: center; justify-items: center; gap: 10px; padding: 32px 20px; text-align: center; }
+.empty svg { width: 84px; height: 64px; }
+.empty h3 { margin: 0; font-size: 14px; font-weight: 600; }
+.empty p { margin: 0; max-width: 300px; font-size: 12px; line-height: 1.5; color: var(--text-secondary); }
+.empty .stats { font-family: ui-monospace, monospace; font-size: 11px; color: var(--text-faint); }
+.empty .lbtn { margin-top: 6px; min-width: 120px; justify-content: center; }
+
+/* skeletons */
+.skrow { padding: 10px 12px 10px 15px; border-bottom: 1px solid var(--border-subtle); border-left: 3px solid var(--border-subtle); }
+.skrow i { display: block; height: 10px; border-radius: 3px; background: var(--bg-raised); position: relative; overflow: hidden; }
+.skrow i + i { margin-top: 7px; }
+.skrow .l1 { width: 55%; } .skrow .l2 { width: 80%; height: 12px; } .skrow .l3 { width: 35%; }
+.skrow i::after {
+  content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgb(128 140 155 / .12), transparent);
+  animation: shim 1.2s linear infinite;
+}
+@keyframes shim { to { transform: translateX(100%); } }
+
+/* ---------- evidence panel ---------- */
+.ev { min-height: 0; overflow: auto; background: var(--bg-surface); }
+.ev-sheet-handle { display: none; }
+.ev-head { padding: 12px 14px 10px; border-bottom: 1px solid var(--border-subtle); }
+.ev-head-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ev-conf { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; color: var(--text-secondary); font-family: ui-monospace, monospace; }
+.ev-actions { margin-left: auto; display: flex; gap: 6px; }
+.ev-open {
+  height: 28px; padding: 0 10px; display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--accent); border-radius: 6px; background: var(--accent-muted);
+  color: var(--accent-fg); font-size: 12px; font-weight: 600;
+}
+.ev-open:hover { background: var(--accent); color: #06281a; }
+[data-theme="light"] .ev-open:hover { color: #fff; }
+.ev-title { margin: 8px 0 3px; font-size: 14px; font-weight: 600; line-height: 20px; }
+.ev-msg { margin: 0; font-size: 12px; line-height: 18px; color: var(--text-secondary); }
+.tabs { display: flex; gap: 2px; height: 33px; padding: 0 8px; border-bottom: 1px solid var(--border-subtle); }
+.tab {
+  display: inline-flex; align-items: center; gap: 5px; padding: 0 10px; font-size: 12px; color: var(--text-secondary);
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.tab:hover { color: var(--text-primary); }
+.tab.on { color: var(--text-primary); border-bottom-color: var(--accent); font-weight: 500; }
+.tab .tcount { font-size: 10px; }
+.ev-body { padding: 12px 14px 20px; }
+.defs { display: grid; grid-template-columns: 96px 1fr; gap: 8px 12px; margin-bottom: 14px; }
+.defs dt { font-size: 11px; color: var(--text-faint); line-height: 18px; }
+.defs dd { margin: 0; font-size: 12px; line-height: 18px; font-family: ui-monospace, monospace; min-width: 0; overflow-wrap: anywhere; }
+.defs a { color: var(--accent-fg); text-decoration: none; }
+.defs a:hover { text-decoration: underline; }
+.dims { display: flex; flex-wrap: wrap; gap: 5px; }
+.dim {
+  display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 7px;
+  border: 1px solid var(--border-subtle); border-radius: 4px; font-size: 10px; font-family: ui-monospace, monospace; color: var(--text-secondary);
+}
+.dim i { width: 6px; height: 6px; border-radius: 50%; }
+.dim.known i { background: var(--accent); } .dim.partial i { background: var(--warning-fg); } .dim.unknown i { background: var(--warning-fg); }
+.dim.unknown { color: var(--warning-fg); border-color: var(--warning-fg); }
+.ev-sec { margin: 0 0 6px; font-size: 10px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--text-faint); }
+.code {
+  margin: 4px 0 14px; background: var(--bg-code); border: 1px solid var(--border-subtle); border-radius: 6px;
+  font: 12px/19px ui-monospace, SFMono-Regular, Menlo, monospace; overflow: auto;
+}
+.cl { display: flex; min-width: max-content; }
+.cl .ln { width: 34px; flex: none; text-align: right; padding-right: 10px; color: var(--text-faint); user-select: none; }
+.cl .cc { padding-right: 12px; white-space: pre; color: var(--text-primary); }
+.cl.hit { background: var(--error-bg); }
+.cl.hit .ln { color: var(--error-fg); font-weight: 700; }
+.cl.add { background: var(--accent-muted); }
+.cl.add .cc { color: var(--accent-fg); }
+.loc {
+  display: flex; gap: 8px; align-items: baseline; padding: 6px 8px; border-radius: 4px;
+  font: 11px/16px ui-monospace, monospace; color: var(--text-secondary);
+}
+.loc:hover { background: var(--bg-raised); }
+.loc .k { flex: none; color: var(--text-faint); border: 1px solid var(--border-subtle); border-radius: 3px; padding: 0 4px; font-size: 9px; }
+.loc .f { color: var(--accent-fg); }
+.loc .m { color: var(--text-faint); overflow-wrap: anywhere; }
+.why {
+  margin: 12px 0 0; padding: 8px 10px; border-left: 2px solid var(--border-strong);
+  font-size: 12px; line-height: 18px; color: var(--text-secondary);
+}
+.why code { font-family: ui-monospace, monospace; font-size: 11px; color: var(--text-primary); background: var(--bg-raised); border-radius: 3px; padding: 0 4px; }
+.fix { padding: 10px 0; border-bottom: 1px solid var(--border-subtle); display: flex; gap: 10px; }
+.fix:last-child { border-bottom: 0; }
+.fix-n {
+  flex: none; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 50%;
+  background: var(--bg-raised); color: var(--text-secondary); font-size: 10px; font-weight: 600; margin-top: 1px;
+}
+.fix-t { font-size: 12px; font-weight: 600; }
+.fix-d { margin: 3px 0 0; font-size: 12px; line-height: 18px; color: var(--text-secondary); }
+.fix-d code { font-family: ui-monospace, monospace; font-size: 11px; color: var(--text-primary); background: var(--bg-raised); border-radius: 3px; padding: 0 4px; }
+.ev-mobile-bar { display: none; }
+
+/* ---------- coverage / skipped views ---------- */
+.cov { padding: 14px; }
+.cov h2 { margin: 0 0 4px; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+.cov h3 { margin: 18px 0 8px; font-size: 10px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--text-faint); }
+.cov-pkg { border: 1px solid var(--border-subtle); border-radius: 6px; padding: 10px 12px; margin-bottom: 8px; background: var(--bg-surface); }
+.cov-pkg-h { display: flex; align-items: center; gap: 8px; font-family: ui-monospace, monospace; font-size: 12px; }
+.cov-line { margin-top: 6px; font-size: 11px; color: var(--text-secondary); font-family: ui-monospace, monospace; }
+.cov-prob { margin-top: 8px; padding: 6px 8px; border-left: 2px solid var(--warning-fg); font-size: 11px; color: var(--warning-fg); }
+.sk { padding: 10px 14px; border-bottom: 1px solid var(--border-subtle); }
+.sk-h { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.sk-reason { font-size: 11px; color: var(--text-secondary); margin-top: 4px; }
+.req { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 1px 5px; border-radius: 3px; }
+.req.y { background: var(--error-bg); color: var(--error-fg); }
+.req.n { background: var(--bg-raised); color: var(--text-faint); }
+
+/* ---------- footer (26px) ---------- */
+.ft {
+  height: 26px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 10px;
+  background: var(--bg-surface); border-top: 1px solid var(--border-subtle);
+  font-size: 11px; color: var(--text-faint);
+}
+.ft-root { font-family: ui-monospace, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.ft-right { margin-left: auto; display: flex; align-items: center; gap: 10px; flex: none; }
+.ft-chip { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; }
+.ft-chip.complete { color: var(--accent-fg); } .ft-chip.partial { color: var(--warning-fg); } .ft-chip.blocked { color: var(--error-fg); }
+.ft-state { display: flex; align-items: center; gap: 5px; border-left: 1px solid var(--border-subtle); padding-left: 10px; }
+.ft-state select {
+  font: 10px ui-monospace, monospace; color: var(--text-faint); background: var(--bg-raised);
+  border: 1px solid var(--border-subtle); border-radius: 4px; height: 18px;
+}
+.mocktag { font-size: 9px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-faint); }
+
+/* ---------- scrim + sheets ---------- */
+.scrim { position: fixed; inset: 0; background: rgb(0 0 0 / .5); opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 30; }
+.scrim.on { opacity: 1; pointer-events: auto; }
+
+/* ---------- mobile (<860px) ---------- */
+@media (max-width: 859px) {
+  .hd { height: 44px; }
+  .hd-filters-btn { display: inline-flex; }
+  .hd-search { margin-left: 4px; }
+  .hd-search .hd-kbd, .hd-proj, #hd-locale { display: none; }
+  .main { display: block; position: relative; overflow: hidden; }
+  .list { height: 100%; border-right: 0; }
+  .sb {
+    position: fixed; top: 0; bottom: 0; left: 0; z-index: 40; width: min(300px, 85vw);
+    transform: translateX(-105%); transition: transform .25s cubic-bezier(.25,1,.5,1);
+    box-shadow: var(--shadow-overlay); border-right: 1px solid var(--border-strong);
+  }
+  .sb.open { transform: translateX(0); }
+  .app.rail .sb-full { display: block; }
+  .app.rail .sb-rail { display: none; }
+  .sb-top { justify-content: flex-start; }
+  .tnode { min-height: 40px; }
+  .ev {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; height: 88dvh;
+    transform: translateY(103%); transition: transform .25s cubic-bezier(.25,1,.5,1);
+    border-radius: 10px 10px 0 0; border-top: 1px solid var(--border-strong); box-shadow: var(--shadow-sheet);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .ev.open { transform: translateY(0); }
+  .ev-sheet-handle { display: flex; flex: none; align-items: center; justify-content: center; height: 26px; position: relative; }
+  .ev-sheet-handle::before { content: ""; width: 36px; height: 4px; border-radius: 2px; background: var(--border-strong); }
+  .ev-sheet-handle button { position: absolute; right: 8px; top: 2px; width: 26px; height: 22px; display: grid; place-items: center; color: var(--text-faint); }
+  .ev-head, .tabs { flex: none; }
+  .ev-body { flex: 1; min-height: 0; overflow: auto; }
+  .ev-mobile-bar {
+    display: flex; flex: none; gap: 8px; padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--border-subtle); background: var(--bg-surface);
+  }
+  .ev-mobile-bar .ev-open { flex: 1; height: 40px; justify-content: center; }
+  .ev-head .ev-actions { display: none; }
+  .ft .ft-root, .ft .ft-ver { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001s !important; transition-duration: .001s !important; }
+}
+</style>
+</head>
+<body>
+
+<!-- icon sprite (lucide family) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></symbol>
+  <symbol id="i-chev-r" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="i-chev-d" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+  <symbol id="i-filter" viewBox="0 0 24 24"><path d="M3 6h18M7 12h10M10 18h4"/></symbol>
+  <symbol id="i-alert-t" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4M12 17h.01"/></symbol>
+  <symbol id="i-alert-o" viewBox="0 0 24 24"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86"/><path d="M12 8v4M12 16h.01"/></symbol>
+  <symbol id="i-oct-x" viewBox="0 0 24 24"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86"/><path d="m15 9-6 6M9 9l6 6"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></symbol>
+  <symbol id="i-check-c" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m8.5 12.2 2.4 2.3 4.8-5"/></symbol>
+  <symbol id="i-half" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18V3Z" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M4 22h14a2 2 0 0 0 2-2V7l-5-5H6a2 2 0 0 0-2 2v4"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="m5 12-3 3 3 3M9 18l3-3-3-3"/></symbol>
+  <symbol id="i-pkg" viewBox="0 0 24 24"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"/><path d="M12 22V12M3.3 7l8.7 5 8.7-5M7.5 4.27l9 5.15"/></symbol>
+  <symbol id="i-ext" viewBox="0 0 24 24"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></symbol>
+  <symbol id="i-panel" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18M16 15l-3-3 3-3"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20M2 12h20"/></symbol>
+  <symbol id="i-scan" viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="12" r="3"/><path d="m16 16-1.9-1.9"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></symbol>
+  <symbol id="i-logo" viewBox="0 0 24 24"><path d="M4.5 5.5 9.5 18.5 12 10.5 14.5 18.5 19.5 5.5"/></symbol>
+</svg>
+
+<div class="app" id="app">
+
+  <!-- header -->
+  <header class="hd">
+    <button class="hbtn hd-filters-btn" id="hd-filters" aria-label="Open filters" title="Filters">
+      <svg class="ic"><use href="#i-panel"/></svg>
+    </button>
+    <div class="hd-brand">
+      <span class="hd-mark"><svg class="ic" style="width:12px;height:12px;stroke-width:2.8" aria-label="Vue Doctor"><use href="#i-logo"/></svg></span>
+      <span class="hd-title">Vue Doctor <span style="font-weight:400;color:var(--text-faint)">Inspector</span></span>
+      <span class="hd-proj">· acme-dashboard</span>
+    </div>
+    <span class="hd-status" aria-live="polite"><span class="hd-dot" id="hd-dot"></span><span id="hd-status">Ready</span></span>
+    <label class="hd-search">
+      <svg class="ic"><use href="#i-search"/></svg>
+      <input id="search" type="text" placeholder="Search findings" aria-label="Search findings">
+      <span class="hd-kbd">/</span>
+      <button id="search-clear" aria-label="Clear search" hidden><svg class="ic ic-xs"><use href="#i-x"/></svg></button>
+    </label>
+    <div class="hd-actions">
+      <button class="hbtn" id="btn-refresh" aria-label="Run again" title="Run again (r)"><svg class="ic"><use href="#i-refresh"/></svg></button>
+      <button class="hbtn" id="hd-locale" aria-label="Language" title="Language"><svg class="ic"><use href="#i-globe"/></svg>EN</button>
+      <button class="hbtn" id="btn-theme" aria-label="Toggle theme" title="Toggle light / dark"><svg class="ic" id="theme-ic"><use href="#i-moon"/></svg></button>
+      <button class="hbtn" id="btn-rail" aria-label="Collapse sidebar" title="Collapse sidebar"><svg class="ic"><use href="#i-panel"/></svg></button>
+    </div>
+  </header>
+
+  <!-- coverage banner -->
+  <div class="banner partial" id="banner" role="status">
+    <svg class="ic" id="banner-ic"><use href="#i-half"/></svg>
+    <span id="banner-text">Coverage is partial — example-ui typed from web-types only, 1 file failed to parse. Findings may be missing.</span>
+    <button class="link" id="banner-review">Review coverage</button>
+    <span class="sep">·</span>
+    <button class="link" id="banner-skipped">2 skipped checks</button>
+  </div>
+
+  <!-- main -->
+  <main class="main">
+
+    <!-- sidebar tree -->
+    <aside class="sb" id="sb" aria-label="Report facets">
+      <div class="sb-full" id="sb-full">
+        <div class="sb-top">
+          <button class="lbtn" id="sb-collapse"><svg class="ic ic-xs"><use href="#i-panel"/></svg> Collapse</button>
+        </div>
+
+        <div class="tsec">Overview</div>
+        <button class="tnode on" data-facet="all"><svg class="ic"><use href="#i-book"/></svg><span class="tlabel">All findings</span><span class="tcount">7</span></button>
+        <button class="tnode" data-facet="coverage"><svg class="ic"><use href="#i-half"/></svg><span class="tlabel">Coverage</span><span class="tchip warn">partial</span></button>
+        <button class="tnode" data-facet="skipped"><svg class="ic"><use href="#i-scan"/></svg><span class="tlabel">Skipped checks</span><span class="tcount">2</span></button>
+
+        <div class="tsec">Severity</div>
+        <button class="tnode" data-facet="severity" data-value="error"><svg class="ic" style="color:var(--error-fg)"><use href="#i-alert-o"/></svg><span class="tlabel">Errors</span><span class="tcount">2</span></button>
+        <button class="tnode" data-facet="severity" data-value="warning"><svg class="ic" style="color:var(--warning-fg)"><use href="#i-alert-t"/></svg><span class="tlabel">Warnings</span><span class="tcount">4</span></button>
+        <button class="tnode" data-facet="severity" data-value="info"><svg class="ic" style="color:var(--info-fg)"><use href="#i-info"/></svg><span class="tlabel">Info</span><span class="tcount">1</span></button>
+
+        <div class="tsec">Category</div>
+        <button class="tnode" data-facet="category" data-value="vue-writing"><span class="tlabel" style="padding-left:18px">Vue writing</span><span class="tcount">2</span></button>
+        <button class="tnode" data-facet="category" data-value="component-library" aria-expanded="true" id="tnode-cl">
+          <svg class="ic tchev"><use href="#i-chev-d"/></svg><span class="tlabel">Component library</span><span class="tcount">5</span>
+        </button>
+        <div class="tkids" id="tkids-cl">
+          <button class="tnode" data-depth="2" data-facet="rule" data-value="vd-component-event-001"><span class="tlabel mono">vd-component-event-001</span><span class="tcount">1</span></button>
+          <button class="tnode" data-depth="2" data-facet="rule" data-value="vd-component-prop-002"><span class="tlabel mono">vd-component-prop-002</span><span class="tcount">1</span></button>
+          <button class="tnode" data-depth="2" data-facet="rule" data-value="vd-component-event-002"><span class="tlabel mono">vd-component-event-002</span><span class="tcount">1</span></button>
+          <button class="tnode" data-depth="2" data-facet="rule" data-value="vd-component-slot-001"><span class="tlabel mono">vd-component-slot-001</span><span class="tcount">1</span></button>
+          <button class="tnode" data-depth="2" data-facet="rule" data-value="vd-component-model-001"><span class="tlabel mono">vd-component-model-001</span><span class="tcount">1</span></button>
+        </div>
+        <button class="tnode" data-facet="style"><span class="tlabel" style="padding-left:18px">Style suggestions</span><span class="tcount">2</span></button>
+
+        <div class="tsec">Packages</div>
+        <button class="tnode" data-facet="package" data-value="example-ui"><svg class="ic"><use href="#i-pkg"/></svg><span class="tlabel mono">example-ui</span><span class="tcount">3</span></button>
+        <button class="tnode" data-facet="package" data-value="@acme/widgets"><svg class="ic"><use href="#i-pkg"/></svg><span class="tlabel mono">@acme/widgets</span><span class="tcount">2</span></button>
+
+        <div class="tsec">Sources</div>
+        <button class="tnode" aria-expanded="true" id="tnode-src">
+          <svg class="ic tchev"><use href="#i-chev-d"/></svg><svg class="ic"><use href="#i-folder"/></svg><span class="tlabel mono">src</span><span class="tcount">7</span>
+        </button>
+        <div class="tkids" id="tkids-src">
+          <button class="tnode" data-depth="2" data-facet="source" data-value="src/views"><svg class="ic"><use href="#i-folder"/></svg><span class="tlabel mono">views</span><span class="tcount">4</span></button>
+          <button class="tnode" data-depth="2" data-facet="source" data-value="src/components"><svg class="ic"><use href="#i-folder"/></svg><span class="tlabel mono">components</span><span class="tcount">3</span></button>
+        </div>
+      </div>
+
+      <div class="sb-rail">
+        <button class="rbtn on" data-facet="all" title="All findings" aria-label="All findings"><svg class="ic ic-lg"><use href="#i-book"/></svg></button>
+        <button class="rbtn" data-facet="severity" data-value="error" title="Errors (2)" aria-label="Errors"><svg class="ic ic-lg" style="color:var(--error-fg)"><use href="#i-alert-o"/></svg><span class="dot e"></span></button>
+        <button class="rbtn" data-facet="severity" data-value="warning" title="Warnings (4)" aria-label="Warnings"><svg class="ic ic-lg" style="color:var(--warning-fg)"><use href="#i-alert-t"/></svg></button>
+        <button class="rbtn" data-facet="coverage" title="Coverage — partial" aria-label="Coverage"><svg class="ic ic-lg" style="color:var(--warning-fg)"><use href="#i-half"/></svg><span class="dot w"></span></button>
+        <button class="rbtn" data-facet="skipped" title="Skipped checks (2)" aria-label="Skipped checks"><svg class="ic ic-lg"><use href="#i-scan"/></svg></button>
+        <div class="rsep"></div>
+        <button class="rbtn" data-facet="package" data-value="example-ui" title="Packages" aria-label="Packages"><svg class="ic ic-lg"><use href="#i-pkg"/></svg></button>
+        <button class="rbtn" data-facet="source" data-value="src/views" title="Sources" aria-label="Sources"><svg class="ic ic-lg"><use href="#i-folder"/></svg></button>
+        <div class="rsep"></div>
+        <button class="rbtn" id="rail-expand" title="Expand sidebar" aria-label="Expand sidebar"><svg class="ic ic-lg"><use href="#i-chev-r"/></svg></button>
+      </div>
+    </aside>
+
+    <!-- finding list -->
+    <section class="list" aria-label="Findings">
+      <div class="lt">
+        <span class="lt-title" id="lt-title">Findings</span>
+        <span class="lt-count num" id="lt-count" aria-live="polite">7</span>
+        <span id="lt-chips" style="display:contents"></span>
+        <span class="lt-spacer"></span>
+        <label class="switch" title="Hidden by default: prefer-use-template-ref, prefer-define-model">
+          <span id="sw-label">Style <span class="num" style="color:var(--text-faint)">2</span></span>
+          <button class="sw" id="sw-style" role="switch" aria-checked="false" aria-label="Show style suggestions"></button>
+        </label>
+        <button class="lbtn" id="btn-clear" disabled><svg class="ic ic-xs"><use href="#i-x"/></svg> Clear filters</button>
+      </div>
+      <div class="rows" id="rows" role="listbox" aria-label="Findings" tabindex="0"></div>
+    </section>
+
+    <!-- evidence panel -->
+    <aside class="ev" id="ev" aria-label="Evidence">
+      <div class="ev-sheet-handle" id="ev-handle">
+        <button id="ev-close" aria-label="Close evidence"><svg class="ic"><use href="#i-x"/></svg></button>
+      </div>
+      <div id="ev-inner" style="display:contents"></div>
+    </aside>
+  </main>
+
+  <!-- footer -->
+  <footer class="ft">
+    <span class="ft-root" title="/Users/dev/code/acme-dashboard">~/code/acme-dashboard</span>
+    <div class="ft-right">
+      <span class="ft-ver num">Vue 3.5.13 · Vite 8.1.2 · 2 libraries</span>
+      <span class="num" id="ft-counts">7 findings · 2 skipped</span>
+      <span class="ft-chip partial" id="ft-chip"><svg class="ic ic-xs"><use href="#i-half"/></svg> partial</span>
+      <span class="ft-state"><span class="mocktag">mock state</span>
+        <select id="state-sel" aria-label="Preview state">
+          <option value="findings">findings + selection</option>
+          <option value="clean">clean</option>
+          <option value="incomplete">incomplete empty</option>
+          <option value="blocked">blocked coverage</option>
+          <option value="loading">loading</option>
+          <option value="error">report error</option>
+          <option value="filter">empty filter match</option>
+        </select>
+      </span>
+    </div>
+  </footer>
+</div>
+
+<div class="scrim" id="scrim"></div>
+
+<script>
+"use strict";
+const $ = (s, r) => (r || document).querySelector(s);
+const $$ = (s, r) => [...(r || document).querySelectorAll(s)];
+
+/* ---------- mock data (one DoctorReport's worth) ---------- */
+const SEV = {
+  error:   { label: "ERROR",   icon: "i-alert-o", color: "var(--error-fg)" },
+  warning: { label: "WARNING", icon: "i-alert-t", color: "var(--warning-fg)" },
+  info:    { label: "INFO",    icon: "i-info",    color: "var(--info-fg)" }
+};
+const FINDINGS = [
+  { id:"f1", sev:"error", code:"vd-component-event-001", msg:"Unsupported event listener on <UiForm>", file:"src/views/OrderForm.vue", line:28, col:6, pkg:"example-ui", conf:"high", cat:"component-library",
+    why:"<code>@submit-success</code> is not in the contract events of <code>&lt;UiForm&gt;</code> (<code>submit, success, error</code>) in example-ui@1.2.3.",
+    snippet:[["26","<UiForm"],["27","  :model=\"order\""],["28","  @submit-success=\"handleSuccess\"","hit"],["29","/>"],["+","  @success=\"handleSuccess\"","add"]],
+    locs:[["template","src/views/OrderForm.vue:28:6","<UiForm> listener @submit-success"],["component-contract","example-ui · web-types.json","events = [submit, success, error]"],["component-contract","example-ui · index.d.ts","emit signatures (3)"]],
+    fixes:[
+      { t:"Rename to @success", d:"example-ui 1.2 renamed the event. Replace with <code>@success=\"handleSuccess\"</code>." },
+      { t:"Update the payload handler", d:"<code>success</code> emits <code>(order: Order)</code> instead of <code>(id: string)</code>. Adjust <code>handleSuccess</code> accordingly." }
+    ] },
+  { id:"f2", sev:"error", code:"vd-component-prop-002", msg:"Unsupported prop `gutter` on <UiTable>", file:"src/components/DataTable.vue", line:16, col:4, pkg:"example-ui", conf:"high", cat:"component-library",
+    why:"<code>gutter</code> is not declared in the props contract of <code>&lt;UiTable&gt;</code>.",
+    locs:[["template","src/components/DataTable.vue:16:4","<UiTable :gutter=\"12\">"],["component-contract","example-ui · web-types.json","props = [columns, rows, density, …]"]],
+    fixes:[{ t:"Use density=\"compact\"", d:"Row spacing is controlled by <code>density</code> in example-ui 1.2." }] },
+  { id:"f3", sev:"warning", code:"vd-component-event-002", msg:"Event payload changed for @update on <DateRange>", file:"src/views/DateRange.vue", line:41, col:8, pkg:"@acme/widgets", conf:"medium", cat:"component-library",
+    why:"<code>@update</code> now emits <code>[Date, Date]</code> (tuple) instead of <code>{ start, end }</code>.",
+    locs:[["template","src/views/DateRange.vue:41:8","@update=\"onRange\""],["component-contract","@acme/widgets · index.d.ts","update: [Date, Date]"]],
+    fixes:[{ t:"Destructure the tuple", d:"<code>const onRange = ([start, end]) => …</code>" }] },
+  { id:"f4", sev:"warning", code:"vd-component-slot-001", msg:"Slot `empty` is not declared on <UiTable>", file:"src/components/DataTable.vue", line:52, col:6, pkg:"example-ui", conf:"medium", cat:"component-library",
+    why:"Slot knowledge for <code>&lt;UiTable&gt;</code> is partial — <code>empty</code> is absent from web-types but slots coverage is incomplete.",
+    locs:[["template","src/components/DataTable.vue:52:6","<template #empty>"],["component-contract","example-ui · web-types.json","slots = [header, cell] (partial)"]],
+    fixes:[{ t:"Verify against runtime docs", d:"Slot evidence is partial — confirm <code>empty</code> exists in example-ui 1.2.3 before relying on it." }] },
+  { id:"f5", sev:"warning", code:"vd-component-model-001", msg:"v-model payload mismatch on <SearchInput>", file:"src/views/SearchBar.vue", line:9, col:4, pkg:"@acme/widgets", conf:"medium", cat:"component-library",
+    why:"<code>update:modelValue</code> emits <code>string | null</code>; the bound ref is <code>string</code>.",
+    locs:[["template","src/views/SearchBar.vue:9:4","v-model=\"query\""],["component-contract","@acme/widgets · index.d.ts","modelValue: string | null"]],
+    fixes:[{ t:"Widen the ref type", d:"<code>const query = ref<string | null>(null)</code>." }] },
+  { id:"f6", sev:"warning", code:"vd-vue-writing-004", msg:"v-for is missing a :key binding", file:"src/components/UserList.vue", line:17, col:10, pkg:null, conf:"high", cat:"vue-writing",
+    why:"<code>v-for=\"user in users\"</code> has no <code>:key</code>; list updates may reuse the wrong component state.",
+    locs:[["template","src/components/UserList.vue:17:10","v-for=\"user in users\""]],
+    fixes:[{ t:"Bind a stable key", d:"<code>:key=\"user.id\"</code>" }] },
+  { id:"f7", sev:"info", code:"vd-vue-writing-010", msg:"Deprecated `slot` attribute syntax", file:"src/views/ProfileView.vue", line:9, col:6, pkg:null, conf:"high", cat:"vue-writing",
+    why:"The <code>slot=\"header\"</code> attribute was removed in Vue 3; use <code>&lt;template #header&gt;</code>.",
+    locs:[["template","src/views/ProfileView.vue:9:6","slot=\"header\""]],
+    fixes:[{ t:"Move to template slot syntax", d:"Wrap in <code>&lt;template #header&gt;</code>." }] },
+  { id:"f8", sev:"info", code:"vd-prefer-define-model", msg:"Prefer defineModel over manual prop/emit pair", file:"src/views/ProfileView.vue", line:22, col:2, pkg:null, conf:"high", cat:"vue-writing", style:true,
+    why:"<code>modelValue</code> prop + <code>update:modelValue</code> emit can be replaced by <code>defineModel()</code>.",
+    locs:[["script-setup","src/views/ProfileView.vue:22:2","defineProps + defineEmits pair"]],
+    fixes:[{ t:"Use defineModel", d:"<code>const model = defineModel()</code>" }] },
+  { id:"f9", sev:"info", code:"vd-prefer-use-template-ref", msg:"Prefer useTemplateRef over string ref lookup", file:"src/views/SearchBar.vue", line:34, col:2, pkg:null, conf:"high", cat:"vue-writing", style:true,
+    why:"<code>ref(\"inputEl\")</code> string lookup is superseded by <code>useTemplateRef(\"inputEl\")</code>.",
+    locs:[["script-setup","src/views/SearchBar.vue:34:2","ref('inputEl')"]],
+    fixes:[{ t:"Use useTemplateRef", d:"<code>const inputEl = useTemplateRef('inputEl')</code>" }] }
+];
+const PKG = {
+  "example-ui":    { v:"1.2.3", declared:"^1.0.0", prov:"web-types.json · high confidence", dims:[["props","known"],["events","known"],["models","partial"],["slots","unknown"]] },
+  "@acme/widgets": { v:"0.9.1", declared:"0.9.1",  prov:"typescript (index.d.ts) · high confidence", dims:[["props","known"],["events","known"],["models","known"],["slots","known"]] }
+};
+const SKIPPED = [
+  { rule:"vd-component-model-001", req:true,  reason:"missing-capability", file:"src/views/SearchBar.vue", note:"Exact event-signature evidence required; contract emits union type." },
+  { rule:"vd-component-slot-002",  req:false, reason:"ambiguous-ownership", file:"src/components/PromotedBanner.vue", note:"<Banner> matches both example-ui and a local component; ownership unresolved." }
+];
+
+/* ---------- state ---------- */
+const state = { facet: { type: "all" }, query: "", style: false, sel: "f1", tab: "evidence", screen: "findings" };
+const rowsEl = $("#rows"), appEl = $("#app");
+const isMobile = () => matchMedia("(max-width: 859px)").matches;
+
+/* ---------- theme ---------- */
+const themeBtn = $("#btn-theme"), themeUse = $("#theme-ic use");
+function setTheme(t) {
+  document.documentElement.dataset.theme = t;
+  themeUse.setAttribute("href", t === "dark" ? "#i-moon" : "#i-sun");
+  localStorage.setItem("vd-mock-theme", t);
+}
+setTheme(localStorage.getItem("vd-mock-theme") ||
+  (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark"));
+themeBtn.onclick = () => setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+
+/* ---------- finding list ---------- */
+function visible() {
+  const f = state.facet;
+  return FINDINGS.filter(d => {
+    if (d.style && !(state.style || f.type === "style")) return false;
+    if (f.type === "severity") return d.sev === f.value;
+    if (f.type === "category") return d.cat === f.value && !d.style;
+    if (f.type === "rule") return d.code === f.value;
+    if (f.type === "package") return d.pkg === f.value;
+    if (f.type === "source") return d.file.startsWith(f.value);
+    if (f.type === "style") return !!d.style;
+    return true;
+  }).filter(d => !state.query ||
+    (d.msg + d.code + d.file).toLowerCase().includes(state.query.toLowerCase()));
+}
+function rowHtml(d) {
+  const s = SEV[d.sev];
+  return `<button class="row ${d.id === state.sel ? "on" : ""}" role="option" aria-selected="${d.id === state.sel}"
+      data-id="${d.id}" style="--sev:${s.color}">
+    <span class="row-l1">
+      <span class="badge ${d.sev}"><svg class="ic"><use href="#${s.icon}"/></svg>${s.label}</span>
+      <span class="code">${d.code}</span>
+      <span class="row-meta">${d.pkg ? d.pkg + " · " : ""}<span class="conf-dot ${d.conf}" title="${d.conf} confidence"></span>${d.conf}</span>
+    </span>
+    <span class="row-msg">${esc(d.msg)}</span>
+    <span class="row-path">${d.file}:${d.line}</span>
+  </button>`;
+}
+function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+
+const GROUPS = [["component-library","Component library"],["vue-writing","Vue writing"]];
+function renderList() {
+  const items = visible();
+  $("#lt-count").textContent = state.query || state.facet.type !== "all" || state.style
+    ? `${items.length} of ${FINDINGS.filter(d => !d.style).length}` : "7";
+  if (!items.length) { renderEmpty("filter"); return; }
+  let html = "";
+  if (state.facet.type === "all" && !state.query) {
+    for (const [cat, label] of GROUPS) {
+      const g = items.filter(d => d.cat === cat && !d.style);
+      if (!g.length) continue;
+      html += `<div class="gh">${label} <span class="num">${g.length}</span></div>` + g.map(rowHtml).join("");
+    }
+  } else html = items.map(rowHtml).join("");
+  rowsEl.innerHTML = html;
+  $$(".row", rowsEl).forEach(r => r.onclick = () => selectFinding(r.dataset.id));
+}
+function renderChips() {
+  const c = $("#lt-chips"); const f = state.facet;
+  let html = "";
+  const chip = (label) => `<span class="chip">${label}<button data-chip aria-label="Remove filter"><svg class="ic ic-xs"><use href="#i-x"/></svg></button></span>`;
+  if (f.type === "severity") html += chip(`severity: ${f.value}`);
+  if (f.type === "category") html += chip(`category: ${f.value}`);
+  if (f.type === "rule") html += chip(`rule: ${f.value}`);
+  if (f.type === "package") html += chip(`package: ${f.value}`);
+  if (f.type === "source") html += chip(`source: ${f.value}`);
+  if (f.type === "style") html += chip("style suggestions");
+  if (state.query) html += `<span class="chip">“${esc(state.query)}”<button data-chip="q" aria-label="Clear search"><svg class="ic ic-xs"><use href="#i-x"/></svg></button></span>`;
+  c.innerHTML = html;
+  $$("button[data-chip]", c).forEach(b => b.onclick = () => {
+    if (b.dataset.chip === "q") { state.query = ""; $("#search").value = ""; $("#search-clear").hidden = true; }
+    else state.facet = { type: "all" };
+    syncTree(); renderChips(); renderList();
+  });
+  $("#btn-clear").disabled = !(state.facet.type !== "all" || state.query || state.style);
+}
+$("#btn-clear").onclick = () => {
+  state.facet = { type: "all" }; state.query = ""; state.style = false;
+  $("#search").value = ""; $("#search-clear").hidden = true;
+  $("#sw-style").setAttribute("aria-checked", "false");
+  syncTree(); renderChips(); renderList();
+};
+$("#sw-style").onclick = () => {
+  state.style = !state.style;
+  $("#sw-style").setAttribute("aria-checked", String(state.style));
+  renderChips(); renderList();
+};
+
+/* ---------- tree / facets ---------- */
+function setFacet(type, value) {
+  state.facet = { type, value };
+  syncTree(); renderChips();
+  if (type === "coverage") return renderCoverage();
+  if (type === "skipped") return renderSkipped();
+  renderList();
+  if (isMobile()) closeSheets();
+}
+function syncTree() {
+  $$(".tnode, .rbtn").forEach(n => n.classList.toggle("on",
+    n.dataset.facet === state.facet.type && (n.dataset.value || "") === (state.facet.value || "")));
+  $("#lt-title").textContent = { coverage: "Coverage", skipped: "Skipped checks" }[state.facet.type] || "Findings";
+}
+$$(".tnode, .rbtn").forEach(n => {
+  if (!n.dataset.facet) return;
+  n.onclick = e => { if (e.target.closest(".tchev")) return; setFacet(n.dataset.facet, n.dataset.value); };
+});
+// rail icons (except "all") expand the sidebar to their section
+$$(".rbtn").forEach(n => n.addEventListener("click", () => {
+  if (appEl.classList.contains("rail") && n.id !== "rail-expand") appEl.classList.remove("rail");
+}));
+// expandable parents: chevron click toggles, label click selects facet
+const wireToggle = (btn, kids) => btn.addEventListener("click", e => {
+  if (!e.target.closest(".tchev")) return;
+  const open = btn.getAttribute("aria-expanded") === "true";
+  btn.setAttribute("aria-expanded", String(!open));
+  kids.hidden = open;
+});
+wireToggle($("#tnode-cl"), $("#tkids-cl"));
+wireToggle($("#tnode-src"), $("#tkids-src"));
+// rail collapse
+$("#btn-rail").onclick = () => appEl.classList.toggle("rail");
+$("#sb-collapse").onclick = () => appEl.classList.add("rail");
+$("#rail-expand").onclick = () => appEl.classList.remove("rail");
+
+/* ---------- evidence panel ---------- */
+function badgeHtml(sev) { const s = SEV[sev]; return `<span class="badge ${sev}"><svg class="ic"><use href="#${s.icon}"/></svg>${s.label}</span>`; }
+function renderEvidence() {
+  const d = FINDINGS.find(x => x.id === state.sel);
+  const host = $("#ev-inner");
+  if (!d || state.screen !== "findings") {
+    host.innerHTML = `<div class="empty" style="min-height:240px">
+      <svg viewBox="0 0 84 64" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round">
+        <rect x="22" y="14" width="28" height="28" rx="5" stroke-dasharray="4 3"/><circle cx="46" cy="42" r="9"/><path d="m53 49 7 7"/></svg>
+      <h3>No finding selected</h3><p>Pick a diagnostic from the list to inspect source evidence, package contracts, and remediation.</p></div>
+      <div class="ev-mobile-bar"></div>`;
+    return;
+  }
+  const p = d.pkg ? PKG[d.pkg] : null;
+  const evTab = `
+    <dl class="defs">
+      <dt>Consumer</dt><dd><a href="#" data-open>${d.file}:${d.line}:${d.col}</a></dd>
+      ${p ? `<dt>Package</dt><dd>${d.pkg}@${p.v} <span style="color:var(--text-faint)">declared ${p.declared}</span></dd>
+      <dt>Provenance</dt><dd>${p.prov}</dd>` : ""}
+      <dt>Rule</dt><dd>${d.code}</dd>
+    </dl>
+    ${p ? `<p class="ev-sec">Contract dimensions</p>
+    <div class="dims" style="margin-bottom:14px">${p.dims.map(([k, v]) =>
+      `<span class="dim ${v}"><i></i>${k} · ${v}</span>`).join("")}</div>` : ""}
+    <p class="ev-sec">${d.snippet ? "Source" : "Evidence locations"}</p>
+    ${d.snippet ? `<div class="code">${d.snippet.map(([n, t, cls]) =>
+      `<div class="cl ${cls || ""}"><span class="ln">${n}</span><span class="cc">${esc(t)}</span></div>`).join("")}</div>`
+    : `<div style="margin-bottom:14px">${d.locs.map(([k, f, m]) =>
+      `<div class="loc"><span class="k">${k}</span><span class="f">${f}</span><span class="m">${esc(m)}</span></div>`).join("")}</div>`}
+    <p class="ev-sec">Why this fired</p>
+    <p class="why">${d.why}</p>`;
+  const fixTab = d.fixes.length
+    ? d.fixes.map((f, i) => `<div class="fix"><span class="fix-n">${i + 1}</span><div><div class="fix-t">${esc(f.t)}</div><p class="fix-d">${f.d}</p></div></div>`).join("")
+    : `<p style="color:var(--text-secondary);font-size:12px">No automatic fix — see the Rule tab for the contract.</p>`;
+  const ruleTab = `
+    <dl class="defs">
+      <dt>Rule</dt><dd>${d.code} <button class="lbtn" style="height:20px;padding:0 5px;margin-left:4px" title="Copy rule code"><svg class="ic ic-xs"><use href="#i-copy"/></svg></button></dd>
+      <dt>Pack</dt><dd>${d.cat === "component-library" ? "@vue-doctor/rule-pack-component-library" : "vue-writing"}</dd>
+      <dt>Severity</dt><dd>${SEV[d.sev].label.toLowerCase()} (default)</dd>
+      <dt>Confidence</dt><dd>${d.conf}${d.conf === "high" && p ? " — matched installed contract via " + p.prov.split(" ·")[0] : ""}</dd>
+    </dl>
+    ${d.pkg === "example-ui" ? `<p class="ev-sec">Related coverage problem</p>
+    <p class="why" style="border-left-color:var(--warning-fg);color:var(--warning-fg)">example-ui: slots knowledge is unknown — slot rules for this library were skipped or downgraded.</p>` : ""}`;
+  host.innerHTML = `
+    <div class="ev-head">
+      <div class="ev-head-top">
+        ${badgeHtml(d.sev)}<span class="code">${d.code}</span>
+        <span class="ev-conf"><span class="conf-dot ${d.conf}"></span>${d.conf} confidence</span>
+        <span class="ev-actions">
+          <button class="ev-open" data-open><svg class="ic"><use href="#i-ext"/></svg>Open in editor</button>
+        </span>
+      </div>
+      <h2 class="ev-title">${esc(d.msg)}</h2>
+      <p class="ev-msg">${d.file}:${d.line} · reported by ${d.cat === "component-library" ? "component-library pack" : "vue-writing pack"}</p>
+    </div>
+    <div class="tabs" role="tablist">
+      <button class="tab ${state.tab === "evidence" ? "on" : ""}" role="tab" data-tab="evidence" aria-selected="${state.tab === "evidence"}">Evidence <span class="tcount">${d.locs.length}</span></button>
+      <button class="tab ${state.tab === "fix" ? "on" : ""}" role="tab" data-tab="fix" aria-selected="${state.tab === "fix"}">Suggested fix <span class="tcount">${d.fixes.length}</span></button>
+      <button class="tab ${state.tab === "rule" ? "on" : ""}" role="tab" data-tab="rule" aria-selected="${state.tab === "rule"}">Rule</button>
+    </div>
+    <div class="ev-body">${{ evidence: evTab, fix: fixTab, rule: ruleTab }[state.tab]}</div>
+    <div class="ev-mobile-bar"><button class="ev-open" data-open><svg class="ic"><use href="#i-ext"/></svg>Open in editor</button></div>`;
+  $$(".tab", host).forEach(t => t.onclick = () => { state.tab = t.dataset.tab; renderEvidence(); });
+  $$("[data-open]", host).forEach(b => b.onclick = e => { e.preventDefault(); flash(b); });
+}
+function flash(b) { b.style.transition = "none"; b.style.opacity = ".45"; setTimeout(() => { b.style.transition = "opacity .3s"; b.style.opacity = "1"; }, 140); }
+function selectFinding(id) {
+  state.sel = id;
+  $$(".row", rowsEl).forEach(r => {
+    const on = r.dataset.id === id;
+    r.classList.toggle("on", on); r.setAttribute("aria-selected", String(on));
+  });
+  renderEvidence();
+  if (isMobile()) openSheet("ev");
+}
+
+/* ---------- coverage & skipped views ---------- */
+function renderCoverage() {
+  rowsEl.innerHTML = `<div class="cov">
+    <h2><span class="ft-chip partial"><svg class="ic ic-xs"><use href="#i-half"/></svg> Coverage: partial</span></h2>
+    <p style="margin:0;font-size:12px;color:var(--text-secondary)">Findings may be missing. A result is clean only when coverage is complete.</p>
+    <h3>Source coverage</h3>
+    <div class="cov-pkg"><div class="cov-pkg-h"><svg class="ic"><use href="#i-folder"/></svg>183 files scanned · <span style="color:var(--warning-fg)">1 failed</span></div>
+      <div class="cov-prob">src/components/charts/SparkLine.vue — template parse failed (unclosed block comment, line 84)</div></div>
+    <h3>Component libraries</h3>
+    <div class="cov-pkg"><div class="cov-pkg-h"><svg class="ic"><use href="#i-pkg"/></svg>example-ui@1.2.3 <span class="tchip warn" style="margin-left:auto">partial</span></div>
+      <div class="cov-line">42 usages detected · 40 matched · web-types.json, index.d.ts</div>
+      <div class="dims" style="margin-top:8px">${PKG["example-ui"].dims.map(([k, v]) => `<span class="dim ${v}"><i></i>${k} · ${v}</span>`).join("")}</div>
+      <div class="cov-prob">component-library-contracts-partial — slots knowledge unavailable; web-types has no slots section.</div></div>
+    <div class="cov-pkg"><div class="cov-pkg-h"><svg class="ic"><use href="#i-pkg"/></svg>@acme/widgets@0.9.1 <span class="tchip" style="margin-left:auto;background:var(--accent-muted);color:var(--accent-fg)">complete</span></div>
+      <div class="cov-line">17 usages detected · 17 matched · index.d.ts</div>
+      <div class="dims" style="margin-top:8px">${PKG["@acme/widgets"].dims.map(([k, v]) => `<span class="dim ${v}"><i></i>${k} · ${v}</span>`).join("")}</div></div>
+  </div>`;
+}
+function renderSkipped() {
+  rowsEl.innerHTML = `<div class="cov">
+    <h2>Skipped checks <span class="lt-count num">2</span></h2>
+    <p style="margin:0 0 6px;font-size:12px;color:var(--text-secondary)">Analysis that could not produce a trustworthy conclusion — why an empty result is not automatically clean.</p></div>
+    ${SKIPPED.map(s => `<div class="sk"><div class="sk-h">
+      <span class="req ${s.req ? "y" : "n"}">${s.req ? "required" : "informational"}</span>
+      <span class="code">${s.rule}</span><span class="lt-count">${s.reason}</span></div>
+      <p class="sk-reason">${esc(s.note)}</p>
+      <p class="sk-reason mono" style="color:var(--text-faint)">${s.file}</p></div>`).join("")}`;
+}
+$("#banner-review").onclick = () => setFacet("coverage");
+$("#banner-skipped").onclick = () => setFacet("skipped");
+
+/* ---------- empty states ---------- */
+const ART = {
+  clean: `<svg viewBox="0 0 84 64" fill="none"><circle cx="42" cy="30" r="18" stroke="var(--accent)" stroke-width="2.5"/><path d="m34 30 6 6 11-12" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 54h52" stroke="var(--border-strong)" stroke-width="2" stroke-linecap="round"/></svg>`,
+  incomplete: `<svg viewBox="0 0 84 64" fill="none"><circle cx="42" cy="30" r="18" stroke="var(--border-strong)" stroke-width="3"/><path d="M42 12a18 18 0 0 1 18 18" stroke="var(--warning-fg)" stroke-width="3" stroke-linecap="round"/><path d="M42 24v8m0 4v.5" stroke="var(--warning-fg)" stroke-width="2.5" stroke-linecap="round"/><path d="M16 54h52" stroke="var(--border-strong)" stroke-width="2" stroke-linecap="round"/></svg>`,
+  blocked: `<svg viewBox="0 0 84 64" fill="none"><polygon points="33 12 51 12 60 21 60 39 51 48 33 48 24 39 24 21" stroke="var(--error-fg)" stroke-width="2.5" stroke-linejoin="round"/><path d="m37 25 10 10m0-10-10 10" stroke="var(--error-fg)" stroke-width="2.5" stroke-linecap="round"/><path d="M16 56h52" stroke="var(--border-strong)" stroke-width="2" stroke-linecap="round"/></svg>`,
+  error: `<svg viewBox="0 0 84 64" fill="none"><path d="M42 12 60 46H24L42 12Z" stroke="var(--error-fg)" stroke-width="2.5" stroke-linejoin="round"/><path d="M42 24v9m0 4v.5" stroke="var(--error-fg)" stroke-width="2.5" stroke-linecap="round"/><path d="M16 56h52" stroke="var(--border-strong)" stroke-width="2" stroke-linecap="round"/></svg>`,
+  filter: `<svg viewBox="0 0 84 64" fill="none"><path d="M26 14h32L46 28v12l-8 5V28L26 14Z" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"/><circle cx="57" cy="45" r="8" stroke="var(--text-faint)" stroke-width="2"/><path d="m54 42 6 6m0-6-6 6" stroke="var(--text-faint)" stroke-width="2" stroke-linecap="round"/></svg>`
+};
+function renderEmpty(kind) {
+  const C = {
+    clean:      { art: ART.clean, t: "No issues found", d: "Analysis coverage is complete and this run reported no diagnostics.", s: "183 files scanned · 2 libraries fully typed", a: null },
+    incomplete: { art: ART.incomplete, t: "No findings can be confirmed", d: "Review analysis coverage before treating this empty result as clean.", s: "Coverage: partial · 2 skipped checks", a: ["Review coverage", "accent", () => setFacet("coverage")] },
+    blocked:    { art: ART.blocked, t: "Analysis blocked", d: "Component-library contracts are unavailable — no findings can be trusted until coverage is resolved.", s: "Coverage: blocked", a: ["Review coverage", "danger", () => setFacet("coverage")] },
+    error:      { art: ART.error, t: "Could not load the Doctor report", d: "The Inspector could not fetch report data. Retry after the analysis server is ready. (ECONNREFUSED 127.0.0.1:6110)", s: null, a: ["Retry", "danger", () => setScreen("findings")] },
+    filter:     { art: ART.filter, t: "No findings match these filters", d: "Clear search or filters to show report findings.", s: null, a: ["Clear filters", "accent", () => $("#btn-clear").click()] }
+  }[kind];
+  rowsEl.innerHTML = `<div class="empty">${C.art}<h3>${C.t}</h3><p>${C.d}</p>
+    ${C.s ? `<span class="stats">${C.s}</span>` : ""}
+    ${C.a ? `<button class="lbtn ${C.a[1]}" id="empty-act">${C.a[0]}</button>` : ""}</div>`;
+  if (C.a) $("#empty-act").onclick = C.a[2];
+}
+
+/* ---------- screen states (footer selector) ---------- */
+function setScreen(name) {
+  state.screen = name;
+  const banner = $("#banner"), chip = $("#ft-chip"), dot = $("#hd-dot"), status = $("#hd-status");
+  banner.hidden = !(name === "findings" || name === "incomplete" || name === "blocked" || name === "filter");
+  banner.className = "banner " + (name === "blocked" ? "blocked" : "partial");
+  $("#banner-text").textContent = name === "blocked"
+    ? "Analysis blocked — component-library contracts unavailable. Results are unreliable until coverage is resolved."
+    : "Coverage is partial — example-ui typed from web-types only, 1 file failed to parse. Findings may be missing.";
+  $("#banner-ic use").setAttribute("href", name === "blocked" ? "#i-oct-x" : "#i-half");
+  const chips = { findings: ["partial", "#i-half", "partial"], filter: ["partial", "#i-half", "partial"],
+    incomplete: ["partial", "#i-half", "partial"], blocked: ["blocked", "#i-oct-x", "blocked"],
+    clean: ["complete", "#i-check-c", "complete"], loading: ["", "", "…"], error: ["partial", "#i-half", "stale"] };
+  const [cls, ic, label] = chips[name];
+  chip.className = "ft-chip " + cls; chip.innerHTML = (ic ? `<svg class="ic ic-xs"><use href="${ic}"/></svg>` : "") + label;
+  $("#ft-counts").textContent = name === "clean" ? "0 findings · 0 skipped" : "7 findings · 2 skipped";
+  dot.className = "hd-dot" + (name === "error" ? " err" : name === "loading" ? " busy" : "");
+  status.textContent = { findings: "Ready", clean: "Ready", incomplete: "Ready", blocked: "Ready",
+    loading: "Loading report…", error: "Report unavailable", filter: "Ready" }[name];
+  state.facet = { type: "all" }; syncTree(); renderChips();
+  if (name === "findings") { renderList(); }
+  else if (name === "loading") {
+    rowsEl.innerHTML = Array.from({ length: 6 }, () =>
+      `<div class="skrow"><i class="l1"></i><i class="l2"></i><i class="l3"></i></div>`).join("");
+  } else if (name === "filter") { state.facet = { type: "category", value: "component-library" }; state.query = "zzzz";
+    $("#search").value = "zzzz"; $("#search-clear").hidden = false; syncTree(); renderChips(); renderEmpty("filter"); }
+  else renderEmpty(name);
+  renderEvidence();
+}
+$("#state-sel").onchange = e => setScreen(e.target.value);
+
+/* ---------- search ---------- */
+const searchEl = $("#search");
+searchEl.oninput = () => {
+  state.query = searchEl.value.trim();
+  $("#search-clear").hidden = !state.query;
+  renderChips(); renderList();
+};
+$("#search-clear").onclick = () => { searchEl.value = ""; state.query = ""; $("#search-clear").hidden = true; renderChips(); renderList(); };
+
+/* ---------- refresh ---------- */
+$("#btn-refresh").onclick = () => {
+  const b = $("#btn-refresh");
+  b.classList.add("spin"); $("#hd-status").textContent = "Refreshing…"; $("#hd-dot").className = "hd-dot busy";
+  setTimeout(() => { b.classList.remove("spin"); $("#hd-status").textContent = "Ready"; $("#hd-dot").className = "hd-dot"; }, 900);
+};
+
+/* ---------- mobile sheets ---------- */
+const scrim = $("#scrim");
+function openSheet(which) {
+  $("#sb").classList.toggle("open", which === "sb");
+  $("#ev").classList.toggle("open", which === "ev");
+  scrim.classList.add("on");
+}
+function closeSheets() { $("#sb").classList.remove("open"); $("#ev").classList.remove("open"); scrim.classList.remove("on"); }
+$("#hd-filters").onclick = () => openSheet("sb");
+$("#ev-close").onclick = closeSheets;
+scrim.onclick = closeSheets;
+
+/* ---------- keyboard ---------- */
+document.addEventListener("keydown", e => {
+  if (e.key === "/" && document.activeElement !== searchEl) { e.preventDefault(); searchEl.focus(); }
+  if (e.key === "Escape") { closeSheets(); if (document.activeElement === searchEl) searchEl.blur(); }
+  if (e.key === "r" && !/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) $("#btn-refresh").click();
+  if ((e.key === "ArrowDown" || e.key === "ArrowUp") && state.screen === "findings" && !/INPUT|SELECT/.test(document.activeElement.tagName)) {
+    const ids = $$(".row", rowsEl).map(r => r.dataset.id);
+    if (!ids.length) return;
+    e.preventDefault();
+    let i = ids.indexOf(state.sel);
+    i = e.key === "ArrowDown" ? Math.min(i + 1, ids.length - 1) : Math.max(i - 1, 0);
+    selectFinding(ids[i]);
+    $$(".row", rowsEl)[i].scrollIntoView({ block: "nearest" });
+  }
+  if (e.ctrlKey && ["1", "2", "3"].includes(e.key)) {
+    state.tab = { 1: "evidence", 2: "fix", 3: "rule" }[e.key]; renderEvidence();
+  }
+});
+
+/* ---------- boot ---------- */
+renderList(); renderChips(); renderEvidence();
+</script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+{
+  "name": "@vue-doctor/component-library",
+  "version": "0.0.0",
+  "type": "module",
+  "files": ["dist"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "scripts": {
+    "build": "tsdown src/index.ts --format esm --dts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@vue-doctor/core": "workspace:*",
+    "@vue/compiler-sfc": "3.5.39",
+    "resolve.exports": "2.0.3",
+    "typescript": "7.0.2"
+  }
+}

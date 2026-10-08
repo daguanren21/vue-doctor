@@ -1,0 +1,22 @@
+{
+  "name": "@vue-doctor/diagnostic-reference",
+  "version": "0.0.0",
+  "type": "module",
+  "files": ["dist"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "dependencies": {
+    "@vue-doctor/core": "workspace:*",
+    "@vue-doctor/rule-pack-component-library": "workspace:*",
+    "@vue-doctor/rule-pack-vue": "workspace:*",
+    "@vue-doctor/rule-pack-eslint": "workspace:*"
+  },
+  "scripts": {
+    "build": "tsdown src/index.ts --format esm --dts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  }
+}

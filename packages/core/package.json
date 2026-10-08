@@ -1,0 +1,35 @@
+{
+  "name": "@vue-doctor/core",
+  "version": "0.0.0",
+  "type": "module",
+  "files": ["dist"],
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    },
+    "./domains": {
+      "types": "./dist/domains.d.mts",
+      "import": "./dist/domains.mjs"
+    },
+    "./report-schema": {
+      "types": "./dist/report-schema.d.mts",
+      "import": "./dist/report-schema.mjs"
+    }
+  },
+  "dependencies": {
+    "@vue-doctor/source": "workspace:*",
+    "jiti": "2.7.0",
+    "semver": "7.8.5"
+  },
+  "devDependencies": {
+    "@types/semver": "7.8.0"
+  },
+  "scripts": {
+    "build": "tsdown src/index.ts src/domains.ts src/report-schema.ts --format esm --dts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  }
+}

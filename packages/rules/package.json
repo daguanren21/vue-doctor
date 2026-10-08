@@ -1,0 +1,29 @@
+{
+  "name": "@vue-doctor/rules",
+  "version": "0.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@babel/parser": "8.0.6",
+    "@babel/traverse": "8.0.6",
+    "@babel/types": "8.0.6",
+    "@vue-doctor/core": "workspace:*",
+    "@vue-doctor/source": "workspace:*",
+    "oxc-parser": "0.153.0"
+  },
+  "scripts": {
+    "build": "tsdown src/index.ts --format esm --dts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  }
+}

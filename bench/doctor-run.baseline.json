@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "fileCount": 250,
+  "limits": {
+    "warmMedianMs": {
+      "vue27": 200,
+      "vue3": 200
+    },
+    "coldMs": {
+      "vue27": 1000,
+      "vue3": 1000
+    }
+  }
+}

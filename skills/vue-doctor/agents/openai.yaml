@@ -1,0 +1,7 @@
+interface:
+  display_name: "Vue Doctor"
+  short_description: "Evidence-first Vue diagnostics"
+  default_prompt: "Use $vue-doctor to diagnose this Vue project or component-library API issue from installed package evidence."
+
+policy:
+  allow_implicit_invocation: true

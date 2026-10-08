@@ -1,0 +1,42 @@
+{
+  "name": "@vue-doctor/unplugin",
+  "version": "0.0.0",
+  "type": "module",
+  "files": ["dist"],
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "peerDependencies": {
+    "vite": ">=5.0.0",
+    "webpack": ">=5.0.0",
+    "@rspack/core": ">=1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "vite": {
+      "optional": true
+    },
+    "webpack": {
+      "optional": true
+    },
+    "@rspack/core": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "@vue-doctor/core": "workspace:*",
+    "@vue-doctor/inspector": "workspace:*",
+    "@vue-doctor/inspector-ui": "workspace:*",
+    "@vue-doctor/runner": "workspace:*",
+    "unplugin": "3.3.0"
+  },
+  "scripts": {
+    "build": "tsdown src/index.ts --format esm --dts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  }
+}

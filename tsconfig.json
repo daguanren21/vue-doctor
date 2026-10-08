@@ -1,0 +1,53 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "./packages/core"
+    },
+    {
+      "path": "./packages/component-library"
+    },
+    {
+      "path": "./packages/diagnostic-reference"
+    },
+    {
+      "path": "./packages/source"
+    },
+    {
+      "path": "./packages/rule-pack-component-library"
+    },
+    {
+      "path": "./packages/runner"
+    },
+    {
+      "path": "./packages/inspector"
+    },
+    {
+      "path": "./packages/unplugin"
+    },
+    {
+      "path": "./packages/vite"
+    },
+    {
+      "path": "./packages/vue-doctor"
+    },
+    {
+      "path": "./packages/rules"
+    },
+    {
+      "path": "./packages/rules-eslint"
+    },
+    {
+      "path": "./packages/rule-pack-eslint"
+    },
+    {
+      "path": "./packages/rule-pack-vue"
+    },
+    {
+      "path": "./packages/inspector-ui"
+    },
+    {
+      "path": "./packages/inspector-protocol"
+    }
+  ]
+}

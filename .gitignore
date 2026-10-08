@@ -1,0 +1,96 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# builds
+dist/
+**/dist/
+*.tsbuildinfo
+
+# local doctor output
+.vue-doctor/
+.vite/
+
+# local agent/process scratch — do not commit
+.superpowers/
+docs/superpowers/
+.local/
+.private/
+.codegraph/
+.playwright-cli/
+
+# package-local skill copies produced by build packaging
+packages/vue-doctor/skills/
+
+# project-local coding-agent skill installs
+.claude/
+.agents/
+.codex/
+.cursor/
+.opencode/
+.gemini/
+.continue/
+.goose/
+.kilocode/
+.roo/
+.cline/
+.pi/
+.augment/
+.factory/
+.aider-desk/
+.adal/
+.bob/
+.commandcode/
+.cortex/
+.crush/
+.codebuddy/
+.codemaker/
+.codestudio/
+.codeartsdoer/
+.forge/
+.iflow/
+.junie/
+.kiro/
+.kode/
+.mcpjam/
+.vibe/
+.mux/
+.neovate/
+.openhands/
+.pochi/
+.qoder/
+.windsurf/
+.zencoder/
+.trae/
+.trae-cn/
+.qwen/
+.kimi/
+.tabnine/
+.devin/
+.droid/
+.amp/
+.firebender/
+.replit/
+.warp/
+
+# logs / coverage / caches
+coverage/
+.nyc_output/
+.cache/
+.turbo/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# env / OS / editor
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json

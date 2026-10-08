@@ -1,0 +1,27 @@
+{
+  "name": "@vue-doctor/rule-pack-eslint",
+  "version": "0.0.0",
+  "type": "module",
+  "engines": {
+    "node": "^20.19.0 || ^22.13.0 || >=24"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@vue-doctor/core": "workspace:*",
+    "@vue-doctor/rules": "workspace:*",
+    "@vue-doctor/rules-eslint": "workspace:*",
+    "eslint": "10.12.0"
+  },
+  "scripts": {
+    "build": "tsdown src/index.ts --format esm --dts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  }
+}

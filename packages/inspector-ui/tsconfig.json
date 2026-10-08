@@ -1,0 +1,19 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "jsx": "preserve",
+    "module": "ESNext",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "moduleResolution": "Bundler",
+    "allowImportingTsExtensions": true,
+    "rootDir": "src",
+    "outDir": "dist-types",
+    "ignoreDeprecations": "6.0",
+    "paths": {
+      "@vue-doctor/core": ["../core/dist/index.d.mts"],
+      "@vue-doctor/inspector-protocol": ["../inspector-protocol/dist/index.d.mts"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.vue"]
+}

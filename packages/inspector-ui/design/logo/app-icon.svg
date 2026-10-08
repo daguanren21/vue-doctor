@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none" role="img" aria-label="Vue Doctor">
+  <title>Vue Doctor</title>
+  <rect x="8" y="8" width="112" height="112" rx="28" fill="#0f1115"/>
+  <rect x="8" y="8" width="112" height="112" rx="28" stroke="#42d392" stroke-width="2" opacity="0.35"/>
+  <!-- centered mark, extra horizontal breathing room inside tile -->
+  <g transform="translate(32 26) scale(2)">
+    <path
+      d="M9.5 9.5 L16 23.5 L22.5 9.5"
+      stroke="#42d392"
+      stroke-width="2.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+    <path
+      d="M12 15 H20"
+      stroke="#42d392"
+      stroke-width="1.6"
+      stroke-linecap="round"
+      opacity="0.9"
+    />
+    <circle cx="16" cy="15" r="1.85" fill="#42d392"/>
+  </g>
+</svg>

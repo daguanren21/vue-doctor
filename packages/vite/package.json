@@ -1,0 +1,33 @@
+{
+  "name": "@vue-doctor/vite",
+  "version": "0.0.0",
+  "type": "module",
+  "files": ["dist"],
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "peerDependencies": {
+    "vite": ">=5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "vite": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "@vue-doctor/unplugin": "workspace:*"
+  },
+  "devDependencies": {
+    "@vue-doctor/core": "workspace:*"
+  },
+  "scripts": {
+    "build": "tsdown src/index.ts --format esm --dts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  }
+}
