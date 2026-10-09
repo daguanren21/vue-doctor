@@ -74,6 +74,8 @@ Vue 与组件库检查直接内置；没有项目 ESLint 配置时，内置 ESLi
 
 **已有 ESLint 配置：** Doctor 复用项目安装的 ESLint 和 `eslint.config.*`，支持 `@antfu/eslint-config`、`@icebreakers/eslint-config` 以及本地插件。规则选项、文件覆盖和 ignore 均沿用原配置，接入见[详细说明](./docs/guide/configuration.zh-CN.md#项目-eslint)。
 
+**可选的死代码分析：** 显式注册独立的 Knip 规则包，检查未使用的文件、导出值和类型，以及重复导出。参见[接入与覆盖边界](./docs/guide/configuration.zh-CN.md#可选的项目死代码分析)。
+
 ### 第三方 UI 组件库
 
 Doctor 从消费项目解析组件库，以组件 import 和全局 plugin 注册作为证据。默认读取已发布的元数据与类型声明，不会扫描每个已安装依赖。可以分析项目已有的 Element Plus（`element-plus`）、Element UI（`element-ui`）等生态组件库；实际契约证据决定覆盖程度。

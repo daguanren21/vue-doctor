@@ -74,6 +74,8 @@ Vue and component-library checks are built in. Without a project ESLint config, 
 
 **Existing ESLint config:** Doctor reuses your project's ESLint and `eslint.config.*`, including configs using `@antfu/eslint-config`, `@icebreakers/eslint-config` or local plugins. Rule options, file overrides and ignores follow that config. See [ESLint integration](./docs/guide/configuration.md#project-eslint).
 
+**Optional dead-code analysis:** Explicitly register the separate Knip rule pack to find unused files, exports and types, or duplicate exports. See [setup and coverage limits](./docs/guide/configuration.md#optional-project-dead-code-analysis).
+
 ### Third-party UI libraries
 
 Doctor resolves libraries from the consuming project, using component imports and global plugin registrations as evidence. It reads published metadata and type declarations by default, rather than scanning every installed dependency. This works with installed ecosystem packages such as Element Plus (`element-plus`) and Element UI (`element-ui`); the available contracts determine coverage.
