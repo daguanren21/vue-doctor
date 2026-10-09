@@ -102,6 +102,68 @@ test('reports all four finding kinds at source-relative locations without flaggi
   ]))
 })
 
+test.each([
+  ['a primitive', 42],
+  ['null', null],
+  ['a non-array issues payload', { issues: {} }],
+  ['a null issue', { issues: [null] }],
+  ['an unsupported issue after a valid entry', { issues: [
+    { type: 'exports', filePath: 'src/library.ts', symbol: 'injected' },
+    { type: 'dependencies', filePath: 'src/library.ts' }
+  ] }],
+  ['an unrequested issue type', { issues: [{ type: 'types', filePath: 'src/library.ts' }] }],
+  ['a non-string file path', { issues: [{ type: 'exports', filePath: 42 }] }],
+  ['a non-string error', { error: { message: 'configuration progress' } }]
+] as const)('ignores trailing IPC containing %s without replacing valid findings', async (_name, message) => {
+  const root = await project({
+    ...findingSources,
+    'ipc.config.mjs': `const send = process.send.bind(process)
+process.send = (response, callback) => {
+  send(response)
+  return send(${JSON.stringify(message)}, callback)
+}
+export default ${JSON.stringify(graphConfig)}
+`
+  })
+  const result = await createDeadCodeRulePack({ configFile: 'ipc.config.mjs' }).run(context(
+    root, Object.keys(findingSources), { 'dead-code/unused-type': 'off' }
+  ))
+
+  expect(result.skippedChecks).toEqual([])
+  expect(statuses(result)).toEqual({
+    'dead-code/unused-file': 'checked',
+    'dead-code/unused-export': 'checked',
+    'dead-code/unused-type': 'disabled',
+    'dead-code/duplicate-export': 'checked'
+  })
+  expect(result.diagnostics.map(({ code, file }) => [code, file]).sort()).toEqual([
+    ['dead-code/unused-file', 'src/orphan.ts'],
+    ['dead-code/unused-export', 'src/library.ts'],
+    ['dead-code/duplicate-export', 'src/library.ts']
+  ].sort())
+})
+
+test('accepts valid IPC issues without interpreting an accompanying non-string error', async () => {
+  const root = await project({
+    'src/entry.ts': 'export const publicEntry = 1\n',
+    'src/orphan.ts': 'export const orphan = 2\n',
+    'ipc.config.mjs': `const send = process.send.bind(process)
+process.send = (response, callback) => {
+  send({ issues: [] })
+  return send({ ...response, error: { message: 'configuration progress' } }, callback)
+}
+export default ${JSON.stringify(graphConfig)}
+`
+  })
+  const result = await createDeadCodeRulePack({ configFile: 'ipc.config.mjs' }).run(context(
+    root, ['src/entry.ts', 'src/orphan.ts']
+  ))
+
+  expect(result.skippedChecks).toEqual([])
+  expect(statuses(result)).toEqual(Object.fromEntries(ruleCodes.map(code => [code, 'checked'])))
+  expect(result.diagnostics).toMatchObject([{ code: 'dead-code/unused-file', file: 'src/orphan.ts' }])
+})
+
 test('retains consumers outside the selected library file while excluding out-of-scope orphan findings', async () => {
   const root = await project({
     'src/entry.ts': "import { used } from './library.ts'\nconsole.log(used)\n",

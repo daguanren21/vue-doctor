@@ -162,7 +162,7 @@ With native Knip `workspaces` configuration, place `entry` and `project` pattern
 
 These graph coverage checks rely on gaps reported by Knip; whole-project graph analysis is not whole-project syntax validation. Doctor's existing source-parse coverage remains limited to selected source targets.
 
-Only load trusted executable Knip configurations and plugins. Analysis runs in a child process to keep its output separate from Doctor's report. A timeout stops the direct Knip worker and releases Doctor's report channels; it does not manage arbitrary helper processes started by project configuration. This isolation is **not a security sandbox**.
+Only load trusted executable Knip configurations and plugins. Analysis runs in a child process to keep its output separate from Doctor's report. Malformed IPC messages from configurations or plugins are ignored rather than replacing valid analysis responses. A timeout stops the direct Knip worker and releases Doctor's report channels; it does not manage arbitrary helper processes started by project configuration. This isolation is **not a security sandbox**.
 
 These are static-graph findings: dynamic entry points or consumers that Knip cannot discover can cause false positives. Confirm the configured graph and actual usage before deleting or consolidating code. This pack does not apply automatic fixes.
 

@@ -36,7 +36,16 @@ export async function analyzeProject(options: {
   let stderr = ''
   child.stderr?.setEncoding('utf8')
   child.stderr?.on('data', (chunk: string) => { stderr = (stderr + chunk).slice(-8192) })
-  child.on('message', message => { response = message as KnipResponse })
+  child.on('message', message => {
+    if (message === null || typeof message !== 'object') return
+    if ('error' in message && typeof message.error === 'string') {
+      response = { error: message.error }
+    } else if ('issues' in message && Array.isArray(message.issues)
+      && message.issues.every(issue => issue !== null && typeof issue === 'object'
+        && options.types.includes(issue.type) && typeof issue.filePath === 'string')) {
+      response = { issues: message.issues }
+    }
+  })
   const timer = setTimeout(() => {
     child.kill('SIGKILL')
     deadline.abort()
@@ -47,7 +56,7 @@ export async function analyzeProject(options: {
     const error = response?.error
       ?? (code !== 0 ? `Knip process exited with ${signal ?? code}.` : undefined)
       ?? (!Array.isArray(response?.issues) ? 'Knip returned no analysis result.' : undefined)
-    if (error) throw new Error([error, stderr.trim()].filter(Boolean).join('\n'))
+    if (error !== undefined) throw new Error([error, stderr.trim()].filter(Boolean).join('\n'))
     return response!.issues!
   } catch (error) {
     if (deadline.signal.aborted) {
