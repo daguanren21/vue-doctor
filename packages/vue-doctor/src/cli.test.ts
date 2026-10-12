@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import type { DoctorReport } from '@vue-doctor/core'
 import { describe, expect, test, vi } from 'vitest'
@@ -93,6 +93,12 @@ function blockedReport(overrides: Partial<DoctorReport> = {}): DoctorReport {
 
 async function writeJson(path: string, value: unknown) {
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
+}
+
+function handoffReportPath(output: string): string {
+  const reference = output.match(/"(?:[^"\\]|\\.)*doctor-report\.json"/)
+  if (!reference) throw new Error('Handoff output must link to its complete report')
+  return JSON.parse(reference[0])
 }
 
 async function createProject() {
@@ -913,6 +919,213 @@ export default {
 
     expect(exitCode).toBe(1)
     expect(stdout.join('')).toContain('Result: failed')
+  })
+
+  test('gates a handoff on a hidden fourth-group error and exports the complete findings', async () => {
+    const report = completeReport({
+      diagnostics: Array.from({ length: 4 }, (_, index) => ({
+        id: `finding-${index}`,
+        code: index === 3 ? 'hidden-error' : `visible-warning-${index}`,
+        severity: index === 3 ? 'error' : 'warning',
+        confidence: 'high',
+        message: `Finding message ${index}`,
+        file: `src/Component${index}.vue`,
+        evidence: [{ kind: 'source', file: `src/Component${index}.vue`, line: index + 1 }],
+        fixes: [{ title: `Review component ${index}` }]
+      }))
+    })
+    const stdout: string[] = []
+    const stderr: string[] = []
+    const runDoctor = vi.fn(async () => report)
+    let reportPath: string | undefined
+    try {
+      const exitCode = await runCli(['handoff', '--fail-on', 'error'], {
+        cwd: '/workspace/example-app',
+        isTTY: true,
+        stdout: message => stdout.push(message),
+        stderr: message => stderr.push(message)
+      }, {
+        runDoctor,
+        startInspector: async () => { throw new Error('unexpected inspector') }
+      })
+      reportPath = handoffReportPath(stdout.join(''))
+
+      expect(exitCode).toBe(1)
+      expect(runDoctor).toHaveBeenCalledOnce()
+      expect(stdout).toHaveLength(1)
+      expect(stderr.length).toBeGreaterThan(0)
+      expect(stdout[0]).not.toContain('hidden-error')
+      expect(stdout[0]).not.toContain('src/Component3.vue')
+      expect(JSON.parse(await readFile(reportPath, 'utf8'))).toEqual(report)
+      const hiddenRule = await readFile(join(dirname(reportPath), 'rule-004.txt'), 'utf8')
+      expect(hiddenRule).toContain('hidden-error')
+      expect(hiddenRule).toContain('finding-3')
+      expect(hiddenRule).toContain('Finding message 3')
+      expect(hiddenRule).toContain('Review component 3')
+    } finally {
+      if (reportPath) await rm(dirname(reportPath), { recursive: true, force: true })
+    }
+  })
+
+  test.each([false, true])('escapes handoff terminal paths and scan errors (failure: %s)', async fail => {
+    const root = '/workspace/consumer-\nFORGED ROOT\u001b[31m\u202e'
+    const scope = 'src-\nFORGED SCOPE\u001b[32m\u202e'
+    const stdout: string[] = []
+    const stderr: string[] = []
+    let reportPath: string | undefined
+    try {
+      const exitCode = await runCli(['handoff', root, '--scope', scope], {
+        cwd: '/workspace',
+        isTTY: true,
+        stdout: message => stdout.push(message),
+        stderr: message => stderr.push(message)
+      }, {
+        runDoctor: async () => {
+          if (fail) throw new Error('Cannot read config-\nFORGED ERROR\u001b[33m\u202e')
+          return completeReport()
+        },
+        startInspector: async () => { throw new Error('unexpected inspector') }
+      })
+      if (!fail) reportPath = handoffReportPath(stdout.join(''))
+      expect(exitCode).toBe(fail ? 1 : 0)
+      const output = stderr.join('')
+      expect(output).not.toMatch(/[\u001b\u007f-\u009f\u2028-\u202e\u2066-\u2069]/)
+      expect(output).not.toContain('\nFORGED')
+      expect(output).toContain('\\nFORGED ROOT')
+      expect(output).toContain('\\nFORGED SCOPE')
+      if (fail) {
+        expect(output).toContain('\\nFORGED ERROR')
+        expect(stdout).toEqual([])
+      }
+    } finally {
+      if (reportPath) await rm(dirname(reportPath), { recursive: true, force: true })
+    }
+  })
+
+  test.each([
+    { status: 'partial', report: partialReport() },
+    { status: 'blocked', report: blockedReport() }
+  ])('keeps the incomplete-coverage gate active for a $status handoff with no findings', async ({ report }) => {
+    const stdout: string[] = []
+    let reportPath: string | undefined
+    try {
+      const exitCode = await runCli(['handoff', '--fail-on-incomplete-coverage'], {
+        cwd: '/workspace/example-app',
+        stdout: message => stdout.push(message),
+        stderr: () => {}
+      }, {
+        runDoctor: async () => report,
+        startInspector: async () => { throw new Error('unexpected inspector') }
+      })
+      reportPath = handoffReportPath(stdout.join(''))
+
+      expect(exitCode).toBe(1)
+      expect(stdout).toHaveLength(1)
+      const saved = JSON.parse(await readFile(reportPath, 'utf8')) as DoctorReport
+      expect(saved).toEqual(report)
+      expect(saved.diagnostics).toEqual([])
+      expect(saved.coverage.status).not.toBe('complete')
+    } finally {
+      if (reportPath) await rm(dirname(reportPath), { recursive: true, force: true })
+    }
+  })
+
+  test.each([
+    { args: ['--json'] },
+    { args: ['--json-out', 'forbidden/report.json'] },
+    { args: ['--verbose'] },
+    { args: ['--inspect'] },
+    { args: ['extra-root'] },
+    { args: ['--', 'extra-root'] }
+  ])('rejects incompatible handoff arguments $args before scanning or exporting', async ({ args }) => {
+    const root = await mkdtemp(join(tmpdir(), 'vue-doctor-cli-handoff-invalid-'))
+    const stdout: string[] = []
+    const stderr: string[] = []
+    const runDoctor = vi.fn(async () => completeReport())
+    const startInspector = vi.fn(async () => { throw new Error('unexpected inspector') })
+    const createAnalysisSession = vi.fn(() => { throw new Error('unexpected analysis session') })
+    try {
+      const exitCode = await runCli(['handoff', root, ...args], {
+        cwd: root,
+        stdout: message => stdout.push(message),
+        stderr: message => stderr.push(message)
+      }, { runDoctor, startInspector, createAnalysisSession })
+
+      expect(exitCode).toBe(1)
+      expect(runDoctor).not.toHaveBeenCalled()
+      expect(startInspector).not.toHaveBeenCalled()
+      expect(createAnalysisSession).not.toHaveBeenCalled()
+      expect(stdout).toEqual([])
+      expect(stderr.length).toBeGreaterThan(0)
+      await expect(readFile(join(root, 'forbidden/report.json'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+    } finally {
+      const reference = stdout.join('').match(/"(?:[^"\\]|\\.)*doctor-report\.json"/)
+      if (reference) await rm(dirname(JSON.parse(reference[0])), { recursive: true, force: true })
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  test.each([
+    { rootArgument: true, scope: [], gate: [], expectedFile: 'src/Other.vue', expectedExitCode: 1 },
+    { rootArgument: false, scope: ['--scope', 'src/App.vue'], gate: ['--fail-on', 'never'], expectedFile: 'src/App.vue', expectedExitCode: 0 }
+  ])('uses the selected root, changed files, resolved config and CLI overrides for handoff ($rootArgument)', async ({
+    rootArgument, scope, gate, expectedFile, expectedExitCode
+  }) => {
+    const root = await createProjectWithDiagnostic()
+    const stdout: string[] = []
+    const stderr: string[] = []
+    let reportPath: string | undefined
+    try {
+      const source = await readFile(join(root, 'src/App.vue'), 'utf8')
+      await writeFile(join(root, 'src/Other.vue'), source)
+      await writeFile(join(root, 'handoff.config.cjs'), `
+const { appendFileSync } = require('node:fs')
+const { join } = require('node:path')
+appendFileSync(join(__dirname, 'config-load-count.txt'), 'loaded\\n')
+module.exports = {
+  scope: 'src/Other.vue',
+  rules: { 'component-event-payload-changed': 'error' },
+  failOn: 'error'
+}
+`, 'utf8')
+      initializeGitProject(root)
+      await writeFile(join(root, 'src/App.vue'), `${source}\n`)
+      await writeFile(join(root, 'src/Other.vue'), `${source}\n`)
+
+      const exitCode = await runCli([
+        'handoff', ...(rootArgument ? [basename(root)] : []),
+        '--config', 'handoff.config.cjs', '--changed', '--changed-base', 'HEAD',
+        ...scope, ...gate
+      ], {
+        cwd: rootArgument ? dirname(root) : root,
+        isTTY: true,
+        stdout: message => stdout.push(message),
+        stderr: message => stderr.push(message)
+      })
+      reportPath = handoffReportPath(stdout.join(''))
+      const saved = JSON.parse(await readFile(reportPath, 'utf8')) as DoctorReport
+
+      expect(exitCode).toBe(expectedExitCode)
+      expect(saved.project.root).toBe(root)
+      expect(saved.run?.target).toEqual({
+        mode: 'files',
+        scopes: [expectedFile],
+        requestedFiles: ['src/App.vue', 'src/Other.vue'],
+        files: [expectedFile]
+      })
+      expect(saved.coverage.source.scannedFileCount).toBe(1)
+      expect(saved.diagnostics).toContainEqual(expect.objectContaining({
+        code: 'component-event-payload-changed',
+        severity: 'error',
+        file: join(root, expectedFile)
+      }))
+      expect(await readFile(join(root, 'config-load-count.txt'), 'utf8')).toBe('loaded\n')
+      expect(stdout).toHaveLength(1)
+      expect(stderr.length).toBeGreaterThan(0)
+    } finally {
+      if (reportPath) await rm(dirname(reportPath), { recursive: true, force: true })
+      await rm(root, { recursive: true, force: true })
+    }
   })
 
   test('applies failOn from project config without CLI gate flags', async () => {
