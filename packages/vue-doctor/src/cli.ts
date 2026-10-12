@@ -15,6 +15,7 @@ import { createDoctorAnalysisSession, resolveDoctorRuleCatalogs, runDoctor, summ
 import { startInspectorServer } from './inspect.js'
 import { resolveChangedFiles } from './changed-files.js'
 import { installGithubActionsWorkflow } from './ci.js'
+import { createHandoff, quote } from './handoff.js'
 import {
   detectAvailableSkillAgents,
   installVueDoctorSkill,
@@ -78,6 +79,7 @@ export async function runCli(
   let inspectorOwnsSession = false
   let inspectorWatcher: FSWatcher | undefined
   let watcherClosed = false
+  let handoff = false
   const cli = cac('vue-doctor')
   cli.version(packageJson.version)
   cli.usage('[root] [options]')
@@ -101,11 +103,18 @@ export async function runCli(
   cli.example('vue-doctor --inspect')
   cli.example('vue-doctor --verbose')
   cli.example('vue-doctor --json-out doctor-report.json')
+  cli.example('vue-doctor handoff ../my-vue-app --scope src')
   cli.example('vue-doctor rules')
   cli.example('vue-doctor install')
   cli.example('vue-doctor ci install')
   cli.example('vue-doctor mcp . --scope src')
-  cli.help()
+  cli.help(sections => {
+    sections.push({
+      title: 'Handoff',
+      body: '  handoff [root]  Print a compact handoff with complete report artifacts.\n'
+        + '                  Supports scan options and exit gates; not --json, --json-out, --verbose or --inspect.'
+    })
+  })
 
   try {
     // Support `vue-doctor --help` / `-h` without running a Doctor scan.
@@ -134,7 +143,21 @@ export async function runCli(
       return await runMcpCommand(parsed.args.slice(1).map(String), options, io, services)
     }
 
-    const root = resolve(io.cwd, String(parsed.args[0] ?? '.'))
+    handoff = parsed.args[0] === 'handoff'
+    const scanArgs = handoff ? [...parsed.args.slice(1), ...parsed.options['--']] : parsed.args
+    if (handoff) {
+      if (scanArgs.length > 1) {
+        io.stderr('Usage: vue-doctor handoff [root] [options]\n')
+        return 1
+      }
+      if (options.json !== undefined || options.jsonOut !== undefined
+        || options.verbose !== undefined || options.inspect !== undefined) {
+        io.stderr('handoff cannot be combined with --json, --json-out, --verbose or --inspect.\n')
+        return 1
+      }
+    }
+
+    const root = resolve(io.cwd, String(scanArgs[0] ?? '.'))
     let files: readonly string[] | undefined
     if (options.changed) {
       try {
@@ -144,10 +167,13 @@ export async function runCli(
         })
         files = changed.files
         if (!options.json) {
-          io.stdout(`Changed scope: ${changed.files.length} files (base: ${changed.base})\n`)
+          const message = `Changed scope: ${changed.files.length} files (base: ${handoff ? quote(changed.base, 240) : changed.base})\n`
+          if (handoff) io.stderr(message)
+          else io.stdout(message)
         }
       } catch (error) {
-        io.stderr(`Failed to resolve changed files: ${error instanceof Error ? error.message : String(error)}\n`)
+        const message = error instanceof Error ? error.message : String(error)
+        io.stderr(`Failed to resolve changed files: ${handoff ? quote(message) : message}\n`)
         return 1
       }
     }
@@ -169,7 +195,11 @@ export async function runCli(
       }
     }
     const scanStarted = performance.now()
-    if (io.isTTY && !options.json) io.stderr(`Scanning ${root}${options.scope ? ` (${options.scope})` : ''}...\n`)
+    if (io.isTTY && !options.json) {
+      const displayRoot = handoff ? quote(root, 240) : root
+      const displayScope = options.scope ? ` (${handoff ? quote(options.scope, 240) : options.scope})` : ''
+      io.stderr(`Scanning ${displayRoot}${displayScope}...\n`)
+    }
     if (options.inspect && services.createAnalysisSession) {
       ownedInspectSession = services.createAnalysisSession(doctorOptions)
     }
@@ -183,7 +213,10 @@ export async function runCli(
       if (io.isTTY && !options.json) io.stderr(`Report written: ${outputFile}\n`)
     }
 
-    if (options.json || !options.jsonOut) {
+    if (handoff) {
+      const result = await createHandoff(report)
+      io.stdout(result.text)
+    } else if (options.json || !options.jsonOut) {
       io.stdout(options.json ? `${JSON.stringify(report, null, 2)}\n` : formatSummary(report, { verbose: options.verbose }))
     }
 
@@ -229,7 +262,8 @@ export async function runCli(
       || gateConfig.failOnIncompleteCoverage === true
     )
     if (!options.json && !options.jsonOut && gateEnabled) {
-      io.stdout(formatGateLine(summary, failed))
+      if (handoff) io.stderr(formatGateLine(summary, failed))
+      else io.stdout(formatGateLine(summary, failed))
     }
     return failed ? 1 : 0
   } catch (error) {
@@ -238,7 +272,8 @@ export async function runCli(
       inspectorWatcher?.close()
       await ownedInspectSession?.close()
     }
-    io.stderr(`${error instanceof Error ? error.message : String(error)}\n`)
+    const message = error instanceof Error ? error.message : String(error)
+    io.stderr(`${handoff ? quote(message) : message}\n`)
     return 1
   }
 }

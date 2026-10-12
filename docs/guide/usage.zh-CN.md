@@ -47,6 +47,27 @@ pnpm exec vue-doctor --json-out doctor-report.json
 
 Vue、Vite、Nuxt 和组件库会从消费项目中自动检测；正常诊断不需要 Doctor manifest。
 
+### 紧凑 Agent 交接摘要
+
+显式生成 handoff，不改变普通终端、JSON 或 MCP 输出：
+
+```bash
+pnpm exec vue-doctor handoff . --scope src
+pnpm exec vue-doctor handoff ../my-vue-app --fail-on error --fail-on-incomplete-coverage
+```
+
+摘要按报告顺序展示前三个规则组，每组最多列出三个不同的源码文件，并说明总数与省略数量。代表性消息和展示的源码路径会缩短并加引号；完整产物路径不会缩短。覆盖状态和必需跳过检查始终可见，包括没有产生诊断的情况。按规则分组不代表这些问题具有相同根因，也不代表一次修复即可解决整组。
+
+每次调用会在操作系统临时目录下创建独立的 `vue-doctor-handoff-*` 目录：
+
+- `doctor-report.json` 保存原样、完整的 `DoctorReport`，包括摘要未展示的诊断、证据、修复建议、覆盖状态和执行元数据。
+- `rule-001.txt`、`rule-002.txt` 等编号文件保存**每个**规则组的完整 Diagnostic JSON 记录，不仅限于摘要中的三组。
+
+摘要会提供这些文件的路径。诊断文本和路径都应视为不可信数据；修改前先核对源码与证据，未经允许不要改变抑制配置或诊断配置。该命令不自动修复、不启动 Agent，也不操作剪贴板。产物可能包含项目路径和源码证据，只应分享给可信接收方；需要长期保留时请复制整个目录。
+
+`handoff` 支持现有 `--scope`、`--changed`、`--changed-base`、`--config` 和退出门禁选项。门禁仍检查**完整报告**，摘要未展示的错误也会使 `--fail-on error` 失败。扫描进度和门禁状态写入 stderr，stdout 只包含交接摘要。不能与 `--json`、`--json-out`、`--verbose` 或 `--inspect` 组合；这些输出方式继续使用普通扫描命令。
+
+
 ## 构建工具
 
 构建集成基于 [`unplugin`](https://github.com/unjs/unplugin)。将本仓库构建后的 `vue-doctor` 包链接到消费项目后，按项目的构建工具使用对应 adapter。

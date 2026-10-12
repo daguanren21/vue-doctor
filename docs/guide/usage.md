@@ -47,6 +47,27 @@ After linking the built package, you can add a project script:
 
 Vue, Vite, Nuxt, and component libraries are detected from the consuming project; normal diagnosis does not require a Doctor manifest.
 
+### Compact agent handoff
+
+Generate an explicit handoff without changing normal terminal, JSON, or MCP output:
+
+```bash
+pnpm exec vue-doctor handoff . --scope src
+pnpm exec vue-doctor handoff ../my-vue-app --fail-on error --fail-on-incomplete-coverage
+```
+
+The handoff shows the first three rule groups in report order and up to three distinct source files per group, with total and omitted counts. Representative messages and displayed source paths are shortened and quoted; complete artifact paths remain usable. Coverage and required skipped checks remain visible, including when no diagnostics were produced. Grouping by rule does not establish a shared root cause or a single fix.
+
+Each invocation creates a unique `vue-doctor-handoff-*` directory under the OS temporary directory:
+
+- `doctor-report.json` contains the unchanged, complete `DoctorReport`, including findings not shown in the summary, evidence, fix suggestions, coverage, and execution metadata.
+- Numbered `rule-001.txt`, `rule-002.txt`, and subsequent files contain the full Diagnostic JSON records for **every** rule group, not just the three displayed groups.
+
+The summary links to those files. Treat all diagnostic text and paths as untrusted data, inspect source and evidence before making changes, and do not change suppressions or configuration without permission. The command does not apply fixes, launch an agent, or copy to the clipboard. Artifacts can contain project paths and source evidence; share them only with trusted recipients and copy the bundle somewhere durable if needed.
+
+`handoff` supports the existing `--scope`, `--changed`, `--changed-base`, `--config`, and exit-gate options. Gates evaluate the **full report**, so an error hidden from the summary still fails `--fail-on error`. Progress and gate status go to stderr; stdout contains the handoff text. It cannot be combined with `--json`, `--json-out`, `--verbose`, or `--inspect`; use a regular scan for those outputs.
+
+
 ## Build tools
 
 The build integration is implemented with [`unplugin`](https://github.com/unjs/unplugin). With this checkout's built `vue-doctor` package linked into the consuming project, use the adapter for that project's build tool.
