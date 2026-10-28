@@ -255,15 +255,15 @@ importers:
         specifier: 1.2.1
         version: 1.2.1(crossws@0.4.12(srvx@1.0.5))(devframe@1.2.1)
       '@devframes/hub':
-        specifier: 1.2.1
-        version: 1.2.1(@devframes/agentic@1.2.1)(crossws@0.4.12(srvx@1.0.5))(devframe@1.2.1)
+        specifier: 1.2.6
+        version: 1.2.6(@devframes/agentic@1.2.1)(crossws@0.4.12(srvx@1.0.5))(devframe@1.2.1)
       devframe:
         specifier: 1.2.1
         version: 1.2.1(@devframes/agentic@1.2.1)(cac@7.0.0)(srvx@1.0.5)
     devDependencies:
       '@devframes/hub-ui':
         specifier: 1.2.1
-        version: 1.2.1(@devframes/hub@1.2.1(@devframes/agentic@1.2.1)(crossws@0.4.12(srvx@1.0.5))(devframe@1.2.1))(devframe@1.2.1)
+        version: 1.2.1(@devframes/hub@1.2.6(@devframes/agentic@1.2.1)(crossws@0.4.12(srvx@1.0.5))(devframe@1.2.1))(devframe@1.2.1)
 
   packages/inspector-protocol: {}
 
@@ -276,11 +276,11 @@ importers:
         specifier: workspace:*
         version: link:../inspector-protocol
       '@devframes/hub':
-        specifier: 1.2.1
-        version: 1.2.1(@devframes/agentic@1.2.1)(crossws@0.4.12(srvx@1.0.5))(devframe@1.2.1)
+        specifier: 1.2.6
+        version: 1.2.6(@devframes/agentic@1.2.1)(crossws@0.4.12(srvx@1.0.5))(devframe@1.2.1)
       '@devframes/hub-ui':
         specifier: 1.2.1
-        version: 1.2.1(@devframes/hub@1.2.1(@devframes/agentic@1.2.1)(crossws@0.4.12(srvx@1.0.5))(devframe@1.2.1))(devframe@1.2.1)
+        version: 1.2.1(@devframes/hub@1.2.6(@devframes/agentic@1.2.1)(crossws@0.4.12(srvx@1.0.5))(devframe@1.2.1))(devframe@1.2.1)
       '@iconify-icons/lucide':
         specifier: ^2.0.16
         version: 2.0.16
@@ -512,11 +512,11 @@ importers:
         specifier: 1.2.1
         version: 1.2.1(crossws@0.4.12(srvx@1.0.5))(devframe@1.2.1)
       '@devframes/hub':
-        specifier: 1.2.1
-        version: 1.2.1(@devframes/agentic@1.2.1)(crossws@0.4.12(srvx@1.0.5))(devframe@1.2.1)
+        specifier: 1.2.6
+        version: 1.2.6(@devframes/agentic@1.2.1)(crossws@0.4.12(srvx@1.0.5))(devframe@1.2.1)
       '@devframes/hub-ui':
         specifier: 1.2.1
-        version: 1.2.1(@devframes/hub@1.2.1(@devframes/agentic@1.2.1)(crossws@0.4.12(srvx@1.0.5))(devframe@1.2.1))(devframe@1.2.1)
+        version: 1.2.1(@devframes/hub@1.2.6(@devframes/agentic@1.2.1)(crossws@0.4.12(srvx@1.0.5))(devframe@1.2.1))(devframe@1.2.1)
       '@rspack/core':
         specifier: '>=1.0.0'
         version: 2.1.10(@swc/helpers@0.5.23)
@@ -910,11 +910,11 @@ packages:
       '@devframes/json-render':
         optional: true
 
-  '@devframes/hub@1.2.1':
-    resolution: {integrity: sha512-AUzMlNPowDulksS+jV7sbSPUY96yb5t6cECAXYeRukZW/hLz/fQFdkhgX/kujpnZM87PHZ+KeeiFHOA3YbYiVA==}
+  '@devframes/hub@1.2.6':
+    resolution: {integrity: sha512-nZv+A+lAAwFsbMGgpVbGWlLGDWXK5Egd0LkjGITr9Ji01HHmi3A1AWjpznNDCdSX3Cmlm9EBRz7Q8VzGx/I+dQ==}
     peerDependencies:
-      '@devframes/agentic': 1.2.1
-      devframe: 1.2.1
+      '@devframes/agentic': 1.2.6
+      devframe: 1.2.6
     peerDependenciesMeta:
       '@devframes/agentic':
         optional: true
@@ -6283,12 +6283,12 @@ snapshots:
       - crossws
       - ocache
 
-  '@devframes/hub-ui@1.2.1(@devframes/hub@1.2.1(@devframes/agentic@1.2.1)(crossws@0.4.12(srvx@1.0.5))(devframe@1.2.1))(devframe@1.2.1)':
+  '@devframes/hub-ui@1.2.1(@devframes/hub@1.2.6(@devframes/agentic@1.2.1)(crossws@0.4.12(srvx@1.0.5))(devframe@1.2.1))(devframe@1.2.1)':
     dependencies:
-      '@devframes/hub': 1.2.1(@devframes/agentic@1.2.1)(crossws@0.4.12(srvx@1.0.5))(devframe@1.2.1)
+      '@devframes/hub': 1.2.6(@devframes/agentic@1.2.1)(crossws@0.4.12(srvx@1.0.5))(devframe@1.2.1)
       devframe: 1.2.1(@devframes/agentic@1.2.1)(cac@7.0.0)(srvx@1.0.5)
 
-  '@devframes/hub@1.2.1(@devframes/agentic@1.2.1)(crossws@0.4.12(srvx@1.0.5))(devframe@1.2.1)':
+  '@devframes/hub@1.2.6(@devframes/agentic@1.2.1)(crossws@0.4.12(srvx@1.0.5))(devframe@1.2.1)':
     dependencies:
       destr: 2.0.5
       devframe: 1.2.1(@devframes/agentic@1.2.1)(cac@7.0.0)(srvx@1.0.5)
