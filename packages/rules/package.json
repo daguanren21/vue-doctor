@@ -17,9 +17,9 @@
     "dist"
   ],
   "dependencies": {
-    "@babel/parser": "8.0.6",
-    "@babel/traverse": "8.0.6",
-    "@babel/types": "8.0.6",
+    "@babel/parser": "8.0.8",
+    "@babel/traverse": "8.0.7",
+    "@babel/types": "8.0.8",
     "@daguanren21/vue-doctor-core": "workspace:*",
     "@daguanren21/vue-doctor-source": "workspace:*",
     "oxc-parser": "0.153.0"
