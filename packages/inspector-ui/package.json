@@ -13,7 +13,7 @@
     "@daguanren21/vue-doctor-core": "workspace:*",
     "@daguanren21/vue-doctor-inspector-protocol": "workspace:*",
     "@devframes/hub": "1.2.1",
-    "@devframes/hub-ui": "1.2.1",
+    "@devframes/hub-ui": "1.2.6",
     "@iconify-icons/lucide": "^2.0.16",
     "@iconify/vue": "^5.0.0",
     "clsx": "^2.1.1",
