@@ -41,7 +41,7 @@
   "dependencies": {
     "@daguanren21/vue-doctor-core": "workspace:*",
     "@daguanren21/vue-doctor-inspector-protocol": "workspace:*",
-    "@devframes/agentic": "1.2.1",
+    "@devframes/agentic": "1.2.6",
     "@devframes/hub": "1.2.1",
     "devframe": "1.2.1"
   },
