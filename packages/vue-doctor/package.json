@@ -61,9 +61,9 @@
     }
   },
   "dependencies": {
-    "@babel/parser": "8.0.6",
-    "@babel/traverse": "8.0.6",
-    "@babel/types": "8.0.6",
+    "@babel/parser": "8.0.8",
+    "@babel/traverse": "8.0.7",
+    "@babel/types": "8.0.8",
     "@devframes/agentic": "1.2.1",
     "@devframes/hub": "1.2.1",
     "@devframes/hub-ui": "1.2.1",
