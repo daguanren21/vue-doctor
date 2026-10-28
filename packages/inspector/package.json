@@ -42,7 +42,7 @@
     "@daguanren21/vue-doctor-core": "workspace:*",
     "@daguanren21/vue-doctor-inspector-protocol": "workspace:*",
     "@devframes/agentic": "1.2.1",
-    "@devframes/hub": "1.2.1",
+    "@devframes/hub": "1.2.6",
     "devframe": "1.2.1"
   },
   "devDependencies": {

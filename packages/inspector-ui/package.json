@@ -12,7 +12,7 @@
   "dependencies": {
     "@daguanren21/vue-doctor-core": "workspace:*",
     "@daguanren21/vue-doctor-inspector-protocol": "workspace:*",
-    "@devframes/hub": "1.2.1",
+    "@devframes/hub": "1.2.6",
     "@devframes/hub-ui": "1.2.1",
     "@iconify-icons/lucide": "^2.0.16",
     "@iconify/vue": "^5.0.0",
