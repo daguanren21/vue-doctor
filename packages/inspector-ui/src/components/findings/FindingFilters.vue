@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, shallowRef, useTemplateRef } from 'vue'
 import { Icon } from '@iconify/vue'
-import type { InspectorSnapshot } from '@vue-doctor/inspector-protocol'
+import type { InspectorSnapshot } from '@daguanren21/vue-doctor-inspector-protocol'
 import type { InspectorFindingFilters } from '../../composables/useInspectorWorkspace'
 import type { InspectorMessages } from '../../i18n'
 import { inspectorIcons } from '../../lib/icons'

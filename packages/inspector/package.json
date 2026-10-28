@@ -1,8 +1,12 @@
 {
-  "name": "@vue-doctor/inspector",
-  "version": "0.0.0",
+  "name": "@daguanren21/vue-doctor-inspector",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
   "type": "module",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.mts",
@@ -35,11 +39,11 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@daguanren21/vue-doctor-core": "workspace:*",
+    "@daguanren21/vue-doctor-inspector-protocol": "workspace:*",
     "@devframes/agentic": "1.2.1",
     "@devframes/hub": "1.2.1",
-    "@vue-doctor/core": "workspace:*",
-    "devframe": "1.2.1",
-    "@vue-doctor/inspector-protocol": "workspace:*"
+    "devframe": "1.2.1"
   },
   "devDependencies": {
     "@devframes/hub-ui": "1.2.1"

@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { createSourceDocument } from '@vue-doctor/source'
+import { createSourceDocument } from '@daguanren21/vue-doctor-source'
 import { babelRule, defineRule, defineRules, oxcRule } from './index.js'
 
 test('keeps Oxc available and records a Babel capability gap below its supported runtime', async () => {

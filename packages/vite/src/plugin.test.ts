@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { ComponentLibraryCoverage, Diagnostic, DoctorReport } from '@vue-doctor/core'
+import type { ComponentLibraryCoverage, Diagnostic, DoctorReport } from '@daguanren21/vue-doctor-core'
 import { afterEach, describe, expect, test } from 'vitest'
 import { createServer } from 'node:http'
 import { once } from 'node:events'

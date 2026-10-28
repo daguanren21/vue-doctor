@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { Diagnostic, DoctorReport } from '@vue-doctor/core'
+import type { Diagnostic, DoctorReport } from '@daguanren21/vue-doctor-core'
 import { afterAll, describe, expect, test } from 'vitest'
 import { InspectorProtocolError, type InspectorEditor } from './protocol.js'
 import { InspectorReportStore } from './report-store.js'
@@ -132,6 +132,62 @@ describe('InspectorReportStore', () => {
     expect(first.queryFindings({ snapshotId, rule: 'anonymous/rule-35999' })).toMatchObject({ total: 1 })
     expect(first.queryFindings({ snapshotId, rule: 'anonymous/missing' })).toMatchObject({ total: 0 })
     expect(first.queryFindings({ snapshotId, query: 'anonymous finding 35999' })).toMatchObject({ total: 1 })
+  })
+
+  test('preserves canonical snapshot and finding identities for escaped text and reordered object keys', () => {
+    const anonymous = diagnostic({
+      message: 'Escaped \n\t"\\😀\ud800', file: '/workspace/src/App.vue',
+      evidence: [{ kind: 'source', file: '/workspace/src/App.vue', line: 2, message: 'Evidence\n😀' }],
+      fixes: [{ title: 'Fix\t"', kind: 'suggestion' }], tags: ['alpha', '😀']
+    })
+    const reordered: Diagnostic = {
+      tags: ['alpha', '😀'], fixes: [{ kind: 'suggestion', title: 'Fix\t"' }],
+      evidence: [{ message: 'Evidence\n😀', line: 2, file: '/workspace/src/App.vue', kind: 'source' }],
+      file: '/workspace/src/App.vue', message: 'Escaped \n\t"\\😀\ud800',
+      confidence: 'high', severity: 'warning', code: 'fixture/rule', id: undefined
+    }
+    const explicit = diagnostic({ id: 'vd1:stable', message: 'Explicit finding' })
+    const input = report('/workspace', [anonymous, reordered, explicit])
+    const first = new InspectorReportStore({ initialReport: input })
+    const second = new InspectorReportStore({ initialReport: report('/workspace', [reordered, anonymous, explicit]) })
+    const snapshotId = first.getSnapshot().snapshotId
+
+    expect(snapshotId).toBe('vds1:bdc6db000b7741d3e2677b783249f9d9')
+    expect(second.getSnapshot().snapshotId).toBe(snapshotId)
+    expect(first.queryFindings({ snapshotId }).items.map(item => item.id)).toEqual([
+      'legacy:1c019ad105bd88796c524e97d7337f56',
+      'legacy:1c019ad105bd88796c524e97d7337f56#2',
+      'vd1:stable'
+    ])
+
+    const changed = structuredClone(input)
+    changed.diagnostics[0]!.tags = [...changed.diagnostics[0]!.tags!].reverse()
+    const changedStore = new InspectorReportStore({ initialReport: changed })
+    expect(changedStore.getSnapshot().snapshotId).toBe('vds1:841dbfe975b0b25e74a3fd26c30aa4e5')
+    expect(first.getFinding({ snapshotId, id: 'legacy:1c019ad105bd88796c524e97d7337f56' }).tags).toEqual(['alpha', '😀'])
+  })
+
+  test('keeps anonymous identities isolated across report mutations and rescans with shared diagnostics', async () => {
+    const shared = diagnostic({ message: 'before' })
+    const input = report('/workspace', [shared, shared])
+    const store = new InspectorReportStore({ initialReport: input, run: async () => input })
+    const before = store.getSnapshot()
+    const beforeItems = store.queryFindings({ snapshotId: before.snapshotId }).items
+    expect(beforeItems[1]!.id).toBe(`${beforeItems[0]!.id}#2`)
+
+    shared.message = 'after'
+    expect(store.getFinding({ snapshotId: before.snapshotId, id: beforeItems[0]!.id }).message).toBe('before')
+    await store.run({ snapshotId: before.snapshotId })
+    const after = store.getSnapshot()
+    const afterItems = store.queryFindings({ snapshotId: after.snapshotId }).items
+
+    expect(after.snapshotId).not.toBe(before.snapshotId)
+    expect(after.counts.findings).toBe(2)
+    expect(afterItems.map(item => item.message)).toEqual(['after', 'after'])
+    expect(afterItems[0]!.id).not.toBe(beforeItems[0]!.id)
+    expect(afterItems[1]!.id).toBe(`${afterItems[0]!.id}#2`)
+    expect(beforeItems.map(item => item.message)).toEqual(['before', 'before'])
+    expect(() => store.queryFindings({ snapshotId: before.snapshotId })).toThrowError(expect.objectContaining({ code: 'stale-snapshot' }))
   })
 
   test('keeps duplicate legacy findings addressable with stable unique ids', () => {

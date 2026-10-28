@@ -315,6 +315,7 @@ export default {
     const card = result.components.find((component) => component.tag === 'ExampleCard')
     expect(card?.origin).toEqual({
       kind: 'direct-import',
+      templateBinding: 'script-setup',
       importSource: 'example-card',
       package: {
         specifier: 'example-card',
@@ -326,6 +327,7 @@ export default {
     const primaryButton = result.components.find((component) => component.tag === 'PrimaryButton')
     expect(primaryButton?.origin).toEqual({
       kind: 'direct-import',
+      templateBinding: 'script-setup',
       importSource: 'example-ui',
       package: {
         specifier: 'example-ui',
@@ -335,7 +337,9 @@ export default {
     })
 
     const timePicker = result.components.find((component) => component.tag === 'TimePicker')
-    expect(timePicker?.origin).toEqual({ kind: 'local-import', importSource: './components/TimePicker.vue', importedName: 'default' })
+    expect(timePicker?.origin).toEqual({
+      kind: 'local-import', importSource: './components/TimePicker.vue', importedName: 'default', templateBinding: 'script-setup'
+    })
   })
 
   test('records object v-bind spreads separately from named props', async () => {

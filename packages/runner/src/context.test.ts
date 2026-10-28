@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { describe, expect, test } from 'vitest'
-import { discoverTargetFiles } from '@vue-doctor/source'
+import { discoverTargetFiles } from '@daguanren21/vue-doctor-source'
 import { buildProjectContext, contextualizeSourceUsage } from './context.js'
 
 async function writeJson(path: string, value: unknown) {

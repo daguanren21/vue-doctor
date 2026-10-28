@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { describe, expect, test } from 'vitest'
@@ -7,7 +7,7 @@ import {
   shouldFailDoctorRun,
   type DoctorReport,
   type DoctorRulePack
-} from '@vue-doctor/core'
+} from '@daguanren21/vue-doctor-core'
 
 async function writeJson(path: string, value: unknown) {
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
@@ -309,6 +309,70 @@ import { ExampleButton } from '@ui'
 }
 
 describe('default Doctor runner', () => {
+  test('does not report a clean run for a metadata-free pack without execution evidence', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'vue-doctor-runner-no-evidence-'))
+    try {
+      await writeJson(join(root, 'package.json'), { dependencies: { vue: '3.5.39' } })
+      const pack: DoctorRulePack = {
+        name: 'no-evidence',
+        rules: [{ code: 'no-evidence/check', title: 'Example check', description: 'No execution record.' }],
+        run: () => ({ diagnostics: [], skippedChecks: [] })
+      }
+      const config = { gitAttribution: false, rulePacks: [pack] }
+
+      const report = await runDoctor({ root, scope: [], config })
+      expect(report.diagnostics).toEqual([])
+      expect(report.rulePacks).toContainEqual(expect.objectContaining({
+        name: 'no-evidence',
+        coverageStatus: 'partial',
+        checks: [expect.objectContaining({ ruleCode: 'no-evidence/check', status: 'unavailable' })]
+      }))
+      expect(report.coverage.status).toBe('partial')
+      expect(summarizeDoctorReport(report)).toMatchObject({ isClean: false, coverageStatus: 'partial' })
+
+      const disabled = await runDoctor({
+        root, scope: [], config: { ...config, rules: { 'no-evidence/check': 'off' } }
+      })
+      expect(disabled.coverage.status).toBe('complete')
+      expect(summarizeDoctorReport(disabled).isClean).toBe(true)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  test('reports unavailable prop compatibility when a constrained dynamic value is unknown', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'vue-doctor-runner-unknown-prop-'))
+    try {
+      const libraryRoot = join(root, 'node_modules/example-ui')
+      const file = join(root, 'src/App.vue')
+      await mkdir(libraryRoot, { recursive: true })
+      await mkdir(join(root, 'src'), { recursive: true })
+      await writeJson(join(root, 'package.json'), { dependencies: { vue: '3.5.39', 'example-ui': '1.0.0' } })
+      await writeJson(join(libraryRoot, 'package.json'), { name: 'example-ui', version: '1.0.0', types: './index.d.ts' })
+      await writeFile(join(libraryRoot, 'index.d.ts'), `export declare const ExampleCounter: {
+  new (): { $props: { count?: number } }
+}
+`)
+      await writeFile(file, `<script setup>
+import { ExampleCounter } from 'example-ui'
+defineProps(['runtimeValue'])
+</script><template><ExampleCounter :count="runtimeValue" /></template>`)
+
+      const report = await runDoctor({ root, config: { gitAttribution: false } })
+      expect(report.diagnostics.filter(diagnostic => diagnostic.code === 'component-prop-type-mismatch')).toEqual([])
+      expect(report.skippedChecks).toContainEqual(expect.objectContaining({
+        ruleCode: 'component-prop-type-mismatch', file, required: true
+      }))
+      expect(report.checks).toContainEqual(expect.objectContaining({
+        ruleCode: 'component-prop-type-mismatch', status: 'unavailable'
+      }))
+      expect(report.coverage.status).toBe('partial')
+      expect(summarizeDoctorReport(report).isClean).toBe(false)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   test('rejects an unknown configured rule code even when it is disabled', async () => {
     const root = await mkdtemp(join(tmpdir(), 'vue-doctor-runner-unknown-rule-'))
     await writeJson(join(root, 'package.json'), {})

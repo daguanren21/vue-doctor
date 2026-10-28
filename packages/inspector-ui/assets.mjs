@@ -1,10 +1,9 @@
 import { access, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { inspectorClientAssets } from './html.mjs'
 import { createUi } from '@devframes/hub-ui'
 
-/** Node host asset locator, resolved within this package in npm and pnpm installs. */
-export const inspectorClientAssets = fileURLToPath(new URL('./dist/', import.meta.url))
+export { inspectorClientAssets }
 
 /** Build the branded Hub shell supplied explicitly to an Inspector host. */
 export function createInspectorHubUi(base = '/vue-doctor/') {
@@ -48,6 +47,7 @@ export function inspectorAssetContentType(name) {
   if (name.endsWith('.js')) return 'text/javascript; charset=utf-8'
   if (name.endsWith('.json')) return 'application/json; charset=utf-8'
   if (name.endsWith('.svg')) return 'image/svg+xml'
+  if (name.endsWith('.txt')) return 'text/plain; charset=utf-8'
   return 'text/html; charset=utf-8'
 }
 

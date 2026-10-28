@@ -15,7 +15,7 @@ When Vue Doctor MCP tools are connected, follow [references/mcp.md](references/m
 
 When MCP is unavailable, use the CLI/report workflow below. A JSON report is also useful when the user needs a complete saved artifact.
 
-Use the consuming project's trusted Vue Doctor installation or local link. The commands below run that local executable with `pnpm exec`; do not silently download a same-named registry package. If the tool is unavailable, follow the intended distribution's setup instructions before scanning.
+Use the consuming project's trusted `@daguanren21/vue-doctor` installation or local link; its executable is named `vue-doctor`. The commands below run that local executable with `pnpm exec`. If it is unavailable, follow the package's npm/pnpm setup instructions before scanning; do not silently download or install a CLI.
 
 ## After making Vue code changes
 

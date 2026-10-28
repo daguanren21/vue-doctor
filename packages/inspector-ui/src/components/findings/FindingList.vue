@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Icon } from '@iconify/vue'
-import type { InspectorFindingSummary, InspectorPage } from '@vue-doctor/inspector-protocol'
+import type { InspectorFindingSummary, InspectorPage } from '@daguanren21/vue-doctor-inspector-protocol'
 import type { InspectorMessages } from '../../i18n'
 import { inspectorIcons } from '../../lib/icons'
 import { severityBadge } from '../../lib/variants'

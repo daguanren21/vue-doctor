@@ -2,7 +2,7 @@ import type {
   DiagnosticSeverity,
   DoctorRuleDefinition,
   SourceBlockKind
-} from '@vue-doctor/core'
+} from '@daguanren21/vue-doctor-core'
 
 interface ParseFailureOrder {
   template?: number
@@ -333,6 +333,39 @@ const internalVueRuleDefinitions = [
     parseFailureOrder: { template: 5 },
   }),
   defineVueRule({
+    code: 'vue-event-passive-prevent',
+    title: 'Passive DOM event listener prevents default',
+    problem: 'A passive native DOM listener cannot honor the prevent modifier.',
+    remediation: 'Choose passive handling or default prevention and remove the conflicting modifier.',
+    defaultEnabled: false,
+    defaultSeverity: 'warning',
+    tags: ['vue', 'template', 'interaction'],
+    applicability: { vue: { only: 3 } },
+    parseFailureOrder: { template: 21 },
+  }),
+  defineVueRule({
+    code: 'vue-memo-invalid-dependencies',
+    title: 'v-memo dependencies are not an array',
+    problem: 'v-memo requires a fixed-length dependency array, not a literal scalar or object.',
+    remediation: 'Pass an array of dependencies; an empty array is valid when no dependencies are needed.',
+    defaultEnabled: false,
+    defaultSeverity: 'error',
+    tags: ['vue', 'template'],
+    applicability: { vue: { only: 3, minimumMinor: 2 } },
+    parseFailureOrder: { template: 22 },
+  }),
+  defineVueRule({
+    code: 'vue-transition-group-mode',
+    title: 'TransitionGroup mode cannot order transitions',
+    problem: 'TransitionGroup does not support transition modes for ordering list transitions.',
+    remediation: 'Remove mode from TransitionGroup or use Transition when switching a single view in sequence.',
+    defaultEnabled: false,
+    defaultSeverity: 'warning',
+    tags: ['vue', 'template'],
+    applicability: { vue: { only: 3 } },
+    parseFailureOrder: { template: 23 },
+  }),
+  defineVueRule({
     code: 'vue-onwatcher-cleanup-after-await',
     title: 'onWatcherCleanup called after await',
     problem: 'onWatcherCleanup() must be registered synchronously before the first await in a watcher callback.',
@@ -581,6 +614,26 @@ const internalVueRuleDefinitions = [
     sourceBlocks: ['script', 'script-setup'],
     defaultEnabled: true,
     defaultSeverity: 'error',
+  }),
+  defineVueRule({
+    code: 'vue-computed-async-getter',
+    title: 'Computed getter is asynchronous',
+    problem: 'An async computed getter returns a Promise rather than synchronously deriving its value.',
+    remediation: 'Keep the getter synchronous and manage asynchronous work in a watcher or explicit action.',
+    defaultEnabled: false,
+    defaultSeverity: 'warning',
+    applicability: { vue: { only: 3 } },
+    parseFailureOrder: { script: 29 },
+  }),
+  defineVueRule({
+    code: 'vue-computed-source-mutation',
+    title: 'Computed getter mutates source state',
+    problem: 'Mutating external reactive state in a computed getter makes reading derived state change its sources.',
+    remediation: 'Move source mutations to an action or watcher and copy arrays before sorting or reversing them.',
+    defaultEnabled: false,
+    defaultSeverity: 'warning',
+    applicability: { vue: { only: 3 } },
+    parseFailureOrder: { script: 30 },
   }),
   defineVueRule({
     code: 'vue-effect-scope-inactive-run',

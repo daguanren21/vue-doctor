@@ -1,0 +1,27 @@
+diff --git a/dist/template-drift-Bzhsxp8j.mjs b/dist/template-drift-Bzhsxp8j.mjs
+--- a/dist/template-drift-Bzhsxp8j.mjs
++++ b/dist/template-drift-Bzhsxp8j.mjs
+@@ -1359,6 +1359,23 @@
+ 	return (isDefault ? duplicateDefault ? void 0 : record$1(workspace["catalog"] ?? named?.["default"]) : record$1(named?.[catalog]))?.[name];
+ }
+ function effectiveManifest(manifest, workspace, lockfile) {
++	// pnpm records downloaded dev runtimes as synthetic runtime: dependencies.
++	const runtimeSetting = record$1(manifest["devEngines"])?.["runtime"];
++	if (runtimeSetting && (manifest["devDependencies"] === void 0 || record$1(manifest["devDependencies"]))) {
++		const runtimes = Array.isArray(runtimeSetting) ? runtimeSetting : [runtimeSetting];
++		const runtimeDependencies = {};
++		for (const value of runtimes) {
++			const runtime = record$1(value);
++			const name = runtime?.["name"];
++			if (!["node", "deno", "bun"].includes(name) || runtime["onFail"] !== "download" || typeof runtime["version"] !== "string") continue;
++			if (dependencyGroups.some((group) => name in (record$1(manifest[group]) ?? {}))) continue;
++			runtimeDependencies[name] = `runtime:${runtime["version"]}`;
++		}
++		if (Object.keys(runtimeDependencies).length) manifest = {
++			...manifest,
++			devDependencies: { ...record$1(manifest["devDependencies"]), ...runtimeDependencies }
++		};
++	}
+ 	if ((workspace["autoInstallPeers"] ?? record$1(lockfile["settings"])?.["autoInstallPeers"] ?? true) !== true) return manifest;
+ 	if (manifest["dependencies"] !== void 0 && !record$1(manifest["dependencies"])) return manifest;
+ 	const explicit = new Set(dependencyGroups.flatMap((group) => Object.keys(record$1(manifest[group]) ?? {})));

@@ -1,7 +1,7 @@
-import type { DoctorDiagnosticDomain, DoctorRuleDefinition } from '@vue-doctor/core'
-import { componentLibraryRuleDefinitions } from '@vue-doctor/rule-pack-component-library/rules'
-import { vueRuleDefinitions } from '@vue-doctor/rule-pack-vue/rules'
-import { eslintRuleDefinitions } from '@vue-doctor/rule-pack-eslint'
+import type { DoctorDiagnosticDomain, DoctorRuleDefinition } from '@daguanren21/vue-doctor-core'
+import { componentLibraryRuleDefinitions } from '@daguanren21/vue-doctor-rule-pack-component-library/rules'
+import { vueRuleDefinitions } from '@daguanren21/vue-doctor-rule-pack-vue/rules'
+import { eslintRuleDefinitions } from '@daguanren21/vue-doctor-rule-pack-eslint'
 
 export interface DiagnosticReference {
   code: string

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { InspectorEditor, InspectorFindingDetail, InspectorFindingSummary, InspectorPage, InspectorSnapshot, InspectorSnippet } from '@vue-doctor/inspector-protocol'
+import type { InspectorEditor, InspectorFindingDetail, InspectorFindingSummary, InspectorPage, InspectorSnapshot, InspectorSnippet } from '@daguanren21/vue-doctor-inspector-protocol'
 import type { InspectorFindingFilters } from '../../composables/useInspectorWorkspace'
 import type { InspectorMessages } from '../../i18n'
 import FindingDetail from './FindingDetail.vue'

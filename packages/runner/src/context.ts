@@ -1,11 +1,11 @@
-import { createProjectInventory } from '@vue-doctor/core'
+import { createProjectInventory } from '@daguanren21/vue-doctor-core'
 import type {
   ProjectApplicationContext,
   ProjectContext,
   ProjectContextIssue,
   ProjectInventory,
   ProjectPackageContext
-} from '@vue-doctor/core'
+} from '@daguanren21/vue-doctor-core'
 import {
   analyzeProjectModuleContext,
   readProjectAliases,
@@ -17,10 +17,11 @@ import {
   type TargetFiles,
   type VueGlobalPluginUsage,
   type VueSourceUsageReport
-} from '@vue-doctor/source'
+} from '@daguanren21/vue-doctor-source'
 import { access, readFile, readdir, realpath, stat } from 'node:fs/promises'
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { escapePath, glob } from 'tinyglobby'
+import { isFrameworkComponentUsage } from './framework-components.js'
 
 const moduleExtensions = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.vue'] as const
 const ignoredDirectories = new Set([
@@ -137,7 +138,8 @@ export function contextualizeSourceUsage(
     return applicationId ? { ...usage, applicationId } : usage
   })
   const relevantUnownedFiles = [...new Set(components
-    .filter((usage) => usage.origin === undefined && usage.applicationId === undefined)
+    .filter((usage) => usage.origin === undefined && usage.applicationId === undefined
+      && !isFrameworkComponentUsage(usage, built.projectContext))
     .map((usage) => usage.file))]
   const ownershipIssues = relevantUnownedFiles.map((file): ProjectContextIssue => {
     const roots = built.projectContext.applications.filter((application) => application.rootComponentFiles.includes(file))

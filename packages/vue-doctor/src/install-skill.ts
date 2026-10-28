@@ -1,6 +1,5 @@
-import { access, cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { access } from 'node:fs/promises'
+import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   detectInstalledSkillAgents,
@@ -128,25 +127,9 @@ export async function resolveSkillSourceDirectory(explicit?: string): Promise<st
     return path
   }
 
-  const here = dirname(fileURLToPath(import.meta.url))
-  const candidates = [
-    // Published package layout: dist/skills/vue-doctor
-    resolve(here, 'skills/vue-doctor'),
-    resolve(here, '../skills/vue-doctor'),
-    // Monorepo development layout: <repo>/skills/vue-doctor
-    resolve(here, '../../../skills/vue-doctor'),
-    resolve(here, '../../../../skills/vue-doctor')
-  ]
-
-  for (const candidate of candidates) {
-    if (await pathExists(join(candidate, SKILL_MANIFEST_FILE))) {
-      return candidate
-    }
-  }
-
-  throw new Error(
-    'Bundled Vue Doctor skill was not found. Ensure the package was built with skills included.'
-  )
+  const source = fileURLToPath(new URL('../skills/vue-doctor/', import.meta.url))
+  await assertSkillSource(source)
+  return source
 }
 
 async function assertSkillSource(path: string): Promise<void> {
@@ -168,11 +151,3 @@ function uniqueAgents(agents: SkillAgentType[]): SkillAgentType[] {
   return [...new Set(agents)]
 }
 
-/**
- * Copy the repository skill tree into the package dist so published installs
- * can find it next to the CLI bundle.
- */
-export async function materializeBundledSkillForTests(targetDir: string, sourceDir: string): Promise<void> {
-  await mkdir(targetDir, { recursive: true })
-  await cp(sourceDir, targetDir, { recursive: true })
-}

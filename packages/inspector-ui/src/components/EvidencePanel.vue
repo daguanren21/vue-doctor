@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onScopeDispose, ref, watch } from 'vue'
 import { Icon } from '@iconify/vue'
-import type { Diagnostic, DoctorReport } from '@vue-doctor/core'
+import type { Diagnostic, DoctorReport } from '@daguanren21/vue-doctor-core'
 import EmptyState from './EmptyState.vue'
 import {
   confidenceDotClass,

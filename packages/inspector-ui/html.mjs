@@ -2,7 +2,8 @@ import { statSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const inspectorClientAssets = fileURLToPath(new URL('./dist/', import.meta.url))
+/** Shared by standalone HTML and the Node host, beside their built modules. */
+export const inspectorClientAssets = fileURLToPath(new URL('./inspector-client/', import.meta.url))
 
 function inspectorAssetVersion() {
   try {

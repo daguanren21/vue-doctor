@@ -1,4 +1,4 @@
-import type { DiagnosticSeverity, DoctorRuleDefinition } from '@vue-doctor/core'
+import type { DiagnosticSeverity, DoctorRuleDefinition } from '@daguanren21/vue-doctor-core'
 
 export const componentLibraryRuleDefinitions = [
   {

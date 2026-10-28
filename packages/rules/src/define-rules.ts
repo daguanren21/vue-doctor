@@ -2,7 +2,7 @@ import {
   validateDoctorRulePacks,
   type DoctorRuleDefinition,
   type DoctorRulePack
-} from '@vue-doctor/core'
+} from '@daguanren21/vue-doctor-core'
 import { runDefinedRules, type ExecutableRule } from './runtime.js'
 import type {
   DefineRulesOptions,

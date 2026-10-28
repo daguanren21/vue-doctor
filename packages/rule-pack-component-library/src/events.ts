@@ -8,9 +8,9 @@ import type {
   EventSignature,
   PropContract,
   PropTypeDescriptor
-} from '@vue-doctor/component-library'
-import { resolveVueVersion } from '@vue-doctor/core'
-import type { StaticValue, VueEventUsage, VueModelUsage, VuePropUsage, VueSlotUsage } from '@vue-doctor/source'
+} from '@daguanren21/vue-doctor-component-library'
+import { resolveVueVersion } from '@daguanren21/vue-doctor-core'
+import type { StaticValue, VueEventUsage, VueModelUsage, VuePropUsage, VueSlotUsage } from '@daguanren21/vue-doctor-source'
 import type {
   ComponentLibraryUsageDiagnostic,
   ComponentLibraryUsageResult,
@@ -68,10 +68,23 @@ export function diagnoseComponentLibraryUsageResult(
         diagnostics.push(createUnverifiedAttributeDiagnostic(match, prop))
         continue
       }
-      if (support === 'declared' && contract.props.knowledge === 'known') {
+      if (support === 'declared') {
         const propContract = getPropContract(contract.props.entries, prop.name)
-        if (propContract && hasIncompatiblePropType(prop, propContract)) {
+        if (!propContract) continue
+        const compatibility = contract.props.knowledge === 'known' && contract.props.issues.length === 0
+          ? classifyPropTypeCompatibility(prop, propContract)
+          : 'unknown'
+        if (compatibility === 'incompatible') {
           diagnostics.push(createInvalidPropTypeDiagnostic(match, prop, propContract))
+        } else if (compatibility === 'unknown') {
+          skippedChecks.push(createContractSkip(
+            match,
+            'component-prop-type-mismatch',
+            prop.loc.line,
+            'source-prop-binding',
+            `The source value and installed contract do not determine type compatibility for prop "${prop.name}".`,
+            getDimensionGapReason(contract.props)
+          ))
         }
       }
     }
@@ -547,31 +560,62 @@ function isListenerPropName(name: string): boolean {
   return /^on[A-Z]/.test(name)
 }
 
-function hasIncompatiblePropType(prop: VuePropUsage, propContract: PropContract): boolean {
-  // Lowercase on* attributes are native listener fallthrough, not Vue listener props.
-  if (prop.kind === 'static' && /^on[a-z]/.test(prop.name)) {
-    return false
+function classifyPropTypeCompatibility(
+  prop: VuePropUsage,
+  propContract: PropContract
+): 'compatible' | 'incompatible' | 'unknown' {
+  // A lowercase spelling of a Vue listener prop is native attribute fallthrough.
+  if (prop.kind === 'static' && /^on[a-z]/.test(prop.name) && isListenerPropName(propContract.name)) {
+    return 'compatible'
   }
-  if (!propContract.types || propContract.types.length === 0) {
-    return false
+  const types = propContract.types
+  if (!types || types.length === 0) {
+    return 'unknown'
   }
-  if (propContract.types.some((type) => type.kind === 'any' || type.kind === 'unknown')) {
-    return false
+  if (types.some((type) => type.kind === 'any' || type.kind === 'unknown')) {
+    return 'compatible'
   }
 
   const observed = observePropValue(prop)
   if (!observed) {
-    return false
+    return 'unknown'
   }
 
-  return !propContract.types.some((type) => typeAcceptsValue(type, observed))
+  const acceptsObserved = types.some((type) => typeAcceptsValue(type, observed))
+  if (
+    observed.kind === 'string'
+    && (
+      observed.value === ''
+      || observed.value === propContract.name.replace(/\B([A-Z])/g, '-$1').toLowerCase()
+    )
+  ) {
+    let hasBoolean = false
+    let hasString = false
+    let acceptsTrue = false
+    for (const type of types) {
+      if (type.kind === 'boolean' || (type.kind === 'literal' && typeof type.value === 'boolean')) {
+        hasBoolean = true
+        acceptsTrue ||= type.kind === 'boolean' || type.value === true
+      } else if (type.kind === 'string' || (type.kind === 'literal' && typeof type.value === 'string')) {
+        hasString = true
+      }
+    }
+    if (hasBoolean) {
+      // Flattened value types do not preserve Vue's String/Boolean constructor order.
+      // A mixed contract is decisive only if both possible casting outcomes agree.
+      if (hasString && acceptsObserved !== acceptsTrue) return 'unknown'
+      return acceptsTrue ? 'compatible' : 'incompatible'
+    }
+  }
+
+  return acceptsObserved ? 'compatible' : 'incompatible'
 }
 
 function observePropValue(
   prop: VuePropUsage
 ): ObservedPropValue | undefined {
   if (prop.kind === 'boolean') {
-    return { kind: 'boolean', value: true, binding: 'static' }
+    return { kind: 'string', value: '' }
   }
 
   if (prop.kind === 'dynamic') {
@@ -580,44 +624,28 @@ function observePropValue(
     if (prop.staticEvidence?.complete === false || prop.staticValue === undefined) {
       return undefined
     }
-    return observeStaticValue(prop.staticValue, 'dynamic')
+    return observeStaticValue(prop.staticValue)
   }
 
   if (prop.kind !== 'static' || prop.value === undefined) {
     return undefined
   }
 
-  const raw = prop.value
-  if (raw === 'true' || raw === 'false') {
-    return { kind: 'boolean', value: raw === 'true', binding: 'static' }
-  }
-
-  if (raw.trim() !== '' && Number.isFinite(Number(raw))) {
-    // Prefer numeric observation only when the whole value is numeric.
-    if (/^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(raw.trim())) {
-      return { kind: 'number', value: Number(raw), binding: 'static' }
-    }
-  }
-
-  return { kind: 'string', value: raw, binding: 'static' }
+  return { kind: 'string', value: prop.value }
 }
 
 type ObservedPropValue = {
   kind: 'string' | 'boolean' | 'number' | 'object' | 'array' | 'null'
   value: StaticValue
-  binding: 'static' | 'dynamic'
 }
 
-function observeStaticValue(
-  value: StaticValue,
-  binding: ObservedPropValue['binding']
-): ObservedPropValue {
-  if (value === null) return { kind: 'null', value, binding }
-  if (Array.isArray(value)) return { kind: 'array', value, binding }
-  if (typeof value === 'object') return { kind: 'object', value, binding }
-  if (typeof value === 'string') return { kind: 'string', value, binding }
-  if (typeof value === 'number') return { kind: 'number', value, binding }
-  return { kind: 'boolean', value, binding }
+function observeStaticValue(value: StaticValue): ObservedPropValue {
+  if (value === null) return { kind: 'null', value }
+  if (Array.isArray(value)) return { kind: 'array', value }
+  if (typeof value === 'object') return { kind: 'object', value }
+  if (typeof value === 'string') return { kind: 'string', value }
+  if (typeof value === 'number') return { kind: 'number', value }
+  return { kind: 'boolean', value }
 }
 
 function typeAcceptsValue(
@@ -628,15 +656,11 @@ function typeAcceptsValue(
     if (type.value === undefined) {
       return false
     }
-    if (observed.binding === 'static' && observed.kind === 'string') {
-      return String(type.value) === observed.value
-    }
     return type.value === observed.value
   }
 
   if (type.kind === 'string') {
     return observed.kind === 'string'
-      || (observed.binding === 'static' && (observed.kind === 'number' || observed.kind === 'boolean'))
   }
 
   if (type.kind === 'number') {
@@ -644,7 +668,7 @@ function typeAcceptsValue(
   }
 
   if (type.kind === 'boolean') {
-    return observed.kind === 'boolean' || (observed.kind === 'string' && observed.value === '')
+    return observed.kind === 'boolean'
   }
 
   if (type.kind === 'object') {
@@ -748,13 +772,13 @@ function formatPropTypes(types: PropTypeDescriptor[]): string {
 
 function formatObservedProp(prop: VuePropUsage): string {
   if (prop.kind === 'boolean') {
-    return 'boolean true'
+    return 'a bare attribute'
   }
   if (prop.kind === 'static') {
     return prop.value === undefined ? 'a static value' : `static "${prop.value}"`
   }
   if (prop.staticValue !== undefined && prop.staticEvidence?.complete !== false) {
-    const observed = observeStaticValue(prop.staticValue, 'dynamic')
+    const observed = observeStaticValue(prop.staticValue)
     return `dynamic ${observed.kind} ${formatStaticValue(observed.value)}`
   }
   return 'a dynamic value'

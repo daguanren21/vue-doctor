@@ -3,10 +3,10 @@ import {
   hasUnresolvedRequiredPropSpread,
   isComponentEventListener,
   type ComponentUsageContractMatch
-} from '@vue-doctor/rule-pack-component-library'
-import { componentLibraryRuleDefinitions } from '@vue-doctor/rule-pack-component-library/rules'
-import { vueRuleDefinitions } from '@vue-doctor/rule-pack-vue/rules'
-import type { SourceBlockKind, VueSourceFileResult, VueSourceUsageReport } from '@vue-doctor/source'
+} from '@daguanren21/vue-doctor-rule-pack-component-library'
+import { componentLibraryRuleDefinitions } from '@daguanren21/vue-doctor-rule-pack-component-library/rules'
+import { vueRuleDefinitions } from '@daguanren21/vue-doctor-rule-pack-vue/rules'
+import type { SourceBlockKind, VueSourceFileResult, VueSourceUsageReport } from '@daguanren21/vue-doctor-source'
 import {
   isDoctorRuleApplicable,
   isDoctorRuleEnabled,
@@ -15,7 +15,7 @@ import {
   type DoctorRuleDefinition,
   type RuleSeveritySetting,
   type SkippedCheck
-} from '@vue-doctor/core'
+} from '@daguanren21/vue-doctor-core'
 
 export interface CreateBuiltinDoctorChecksOptions {
   source: VueSourceUsageReport

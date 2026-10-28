@@ -3,7 +3,7 @@ import type {
   Diagnostic,
   DoctorReport,
   EvidenceLocation
-} from '@vue-doctor/core'
+} from '@daguanren21/vue-doctor-core'
 import { packageNameFromDiagnostic } from './categories'
 
 export type EvidenceTab = 'evidence' | 'fix' | 'rule'

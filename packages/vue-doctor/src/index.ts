@@ -6,15 +6,15 @@ export {
   mergeDoctorConfig,
   resolveVueVersion,
   shouldFailDoctorRun
-} from '@vue-doctor/core'
-export { DOCTOR_REPORT_SCHEMA_VERSION, getDoctorReportSchemaVersion, isSupportedDoctorReport } from '@vue-doctor/core/report-schema'
-export { createComponentLibraryEvidence, findPackageTextEvidence } from '@vue-doctor/component-library'
-export { getDiagnosticReference, listDiagnosticReferences } from '@vue-doctor/diagnostic-reference'
-export { renderInspectorHtml } from '@vue-doctor/inspector-ui/html'
-export { diagnoseComponentLibraryUsage, diagnoseComponentLibraryUsageResult } from '@vue-doctor/rule-pack-component-library'
-export { createDoctorAnalysisSession, resolveDoctorRuleCatalogs, runDoctor, summarizeDoctorReport } from '@vue-doctor/runner'
-export type { DoctorAnalysisSession, DoctorAnalysisSessionStats, DoctorAnalysisRunStats, DoctorAnalysisPhase, DoctorSourceWorkspaceStats } from '@vue-doctor/runner'
-export { scanVueSourceUsage } from '@vue-doctor/source'
+} from '@daguanren21/vue-doctor-core'
+export { DOCTOR_REPORT_SCHEMA_VERSION, getDoctorReportSchemaVersion, isSupportedDoctorReport } from '@daguanren21/vue-doctor-core/report-schema'
+export { createComponentLibraryEvidence, findPackageTextEvidence } from '@daguanren21/vue-doctor-component-library'
+export { getDiagnosticReference, listDiagnosticReferences } from '@daguanren21/vue-doctor-diagnostic-reference'
+export { renderInspectorHtml } from '@daguanren21/vue-doctor-inspector-ui/html'
+export { diagnoseComponentLibraryUsage, diagnoseComponentLibraryUsageResult } from '@daguanren21/vue-doctor-rule-pack-component-library'
+export { createDoctorAnalysisSession, resolveDoctorRuleCatalogs, runDoctor, summarizeDoctorReport } from '@daguanren21/vue-doctor-runner'
+export type { DoctorAnalysisSession, DoctorAnalysisSessionStats, DoctorAnalysisRunStats, DoctorAnalysisPhase, DoctorSourceWorkspaceStats } from '@daguanren21/vue-doctor-runner'
+export { scanVueSourceUsage } from '@daguanren21/vue-doctor-source'
 export { startInspectorServer } from './inspect.js'
 export type { InspectorServer, InspectorServerOptions, OpenEditorRequest } from './inspect-server.js'
 export type {
@@ -64,7 +64,7 @@ export type {
   SourceCoverage,
   UiLibraryConfig,
   VueFramework
-} from '@vue-doctor/core'
+} from '@daguanren21/vue-doctor-core'
 export type {
   ComponentLibraryArtifacts,
   ComponentLibraryEvidence,
@@ -72,14 +72,14 @@ export type {
   EvidenceFile,
   FindPackageTextEvidenceOptions,
   PackageTextEvidence
-} from '@vue-doctor/component-library'
-export type { DiagnosticReference } from '@vue-doctor/diagnostic-reference'
-export type { InspectorHtmlOptions } from '@vue-doctor/inspector-ui/html'
+} from '@daguanren21/vue-doctor-component-library'
+export type { DiagnosticReference } from '@daguanren21/vue-doctor-diagnostic-reference'
+export type { InspectorHtmlOptions } from '@daguanren21/vue-doctor-inspector-ui/html'
 export type {
   ComponentLibraryUsageDiagnostic,
   ComponentLibraryUsageResult,
   DiagnoseComponentLibraryUsageOptions
-} from '@vue-doctor/rule-pack-component-library'
+} from '@daguanren21/vue-doctor-rule-pack-component-library'
 export type {
   ScanVueSourceUsageOptions,
   SourceLocation,
@@ -90,7 +90,7 @@ export type {
   VuePropUsage,
   VueSlotUsage,
   VueSourceUsageReport
-} from '@vue-doctor/source'
+} from '@daguanren21/vue-doctor-source'
 
 export { installGithubActionsWorkflow, buildVueDoctorWorkflow } from './ci.js'
 export { resolveChangedFiles } from './changed-files.js'

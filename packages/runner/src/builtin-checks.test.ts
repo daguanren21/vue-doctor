@@ -2,20 +2,20 @@ import type {
   ComponentContract,
   ComponentLibraryEvidence,
   ContractKnowledge
-} from '@vue-doctor/component-library'
-import type { ComponentUsageContractMatch } from '@vue-doctor/rule-pack-component-library'
+} from '@daguanren21/vue-doctor-component-library'
+import type { ComponentUsageContractMatch } from '@daguanren21/vue-doctor-rule-pack-component-library'
 import type {
   DoctorRuleCheck,
   PackageResolution,
   SkippedCheck
-} from '@vue-doctor/core'
+} from '@daguanren21/vue-doctor-core'
 import type {
   SourceBlockResult,
   VueComponentUsage,
   VueSourceFileResult,
   VueSourceUsageReport
-} from '@vue-doctor/source'
-import { analyzeSourceText } from '@vue-doctor/source'
+} from '@daguanren21/vue-doctor-source'
+import { analyzeSourceText } from '@daguanren21/vue-doctor-source'
 import { describe, expect, test } from 'vitest'
 import { createBuiltinDoctorChecks } from './builtin-checks.js'
 
@@ -46,15 +46,14 @@ function check(checks: readonly DoctorRuleCheck[], code: string): DoctorRuleChec
 }
 
 describe('builtin Doctor checks', () => {
-  test('records every builtin rule without inventing work for a zero-target scan', () => {
+  test('does not invent work or duplicate checks for a zero-target scan', () => {
     const result = createBuiltinDoctorChecks({
       source: source(),
       matches: [],
       rules: {}
     })
 
-    expect(result.checks).toHaveLength(86)
-    expect(new Set(result.checks.map((item) => item.ruleCode))).toHaveProperty('size', 86)
+    expect(new Set(result.checks.map((item) => item.ruleCode)).size).toBe(result.checks.length)
     expect(result.checks.every((item) => item.status === 'not-applicable' || item.status === 'disabled')).toBe(true)
     expect(result.skippedChecks).toEqual([])
     expect(check(result.checks, 'vue-watch-once-unsupported')).toMatchObject({

@@ -1,9 +1,19 @@
 {
-  "name": "vue-doctor",
-  "version": "0.0.0",
+  "name": "@daguanren21/vue-doctor",
+  "version": "0.1.0",
+  "license": "MIT",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/daguanren21/vue-doctor.git",
+    "directory": "packages/vue-doctor"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "engines": {
-    "node": ">=20.19.0"
+    "node": "^22.18.0 || >=24.11.0"
   },
   "bin": {
     "vue-doctor": "./dist/cli.mjs"
@@ -51,26 +61,72 @@
     }
   },
   "dependencies": {
-    "@vue-doctor/component-library": "workspace:*",
-    "@vue-doctor/core": "workspace:*",
-    "@vue-doctor/diagnostic-reference": "workspace:*",
-    "@vue-doctor/inspector": "workspace:*",
-    "@vue-doctor/rule-pack-component-library": "workspace:*",
-    "@vue-doctor/runner": "workspace:*",
-    "@vue-doctor/rules": "workspace:*",
-    "@vue-doctor/source": "workspace:*",
-    "@vue-doctor/unplugin": "workspace:*",
+    "@babel/parser": "8.0.6",
+    "@babel/traverse": "8.0.6",
+    "@babel/types": "8.0.6",
+    "@devframes/agentic": "1.2.1",
+    "@devframes/hub": "1.2.1",
+    "@devframes/hub-ui": "1.2.1",
+    "@typescript-eslint/parser": "8.72.0",
+    "@vue/compiler-sfc": "3.5.39",
+    "@vue/shared": "3.5.44",
     "agent-install": "^0.0.8",
     "cac": "7.0.0",
-    "@vue-doctor/inspector-ui": "workspace:*",
-    "@vue-doctor/rules-eslint": "workspace:*"
+    "devframe": "1.2.1",
+    "eslint": "10.12.0",
+    "espree": "11.2.0",
+    "jiti": "2.7.0",
+    "oxc-parser": "0.153.0",
+    "p-map": "7.0.6",
+    "piscina": "5.3.0",
+    "resolve.exports": "2.0.3",
+    "semver": "7.8.5",
+    "tinyglobby": "0.2.17",
+    "typescript": "6.0.3",
+    "typescript-native": "npm:typescript@7.0.2",
+    "unplugin": "3.3.0",
+    "vue-eslint-parser": "10.4.1"
+  },
+  "devDependencies": {
+    "@daguanren21/vue-doctor-component-library": "workspace:*",
+    "@daguanren21/vue-doctor-core": "workspace:*",
+    "@daguanren21/vue-doctor-diagnostic-reference": "workspace:*",
+    "@daguanren21/vue-doctor-inspector": "workspace:*",
+    "@daguanren21/vue-doctor-inspector-protocol": "workspace:*",
+    "@daguanren21/vue-doctor-inspector-ui": "workspace:*",
+    "@daguanren21/vue-doctor-rule-pack-component-library": "workspace:*",
+    "@daguanren21/vue-doctor-rule-pack-eslint": "workspace:*",
+    "@daguanren21/vue-doctor-rule-pack-vue": "workspace:*",
+    "@daguanren21/vue-doctor-rules": "workspace:*",
+    "@daguanren21/vue-doctor-rules-eslint": "workspace:*",
+    "@daguanren21/vue-doctor-runner": "workspace:*",
+    "@daguanren21/vue-doctor-source": "workspace:*",
+    "@daguanren21/vue-doctor-unplugin": "workspace:*"
+  },
+  "peerDependencies": {
+    "@rspack/core": ">=1.0.0",
+    "esbuild": "*",
+    "rolldown": "*",
+    "rollup": "*",
+    "vite": ">=5.0.0",
+    "webpack": ">=5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@rspack/core": { "optional": true },
+    "esbuild": { "optional": true },
+    "rolldown": { "optional": true },
+    "rollup": { "optional": true },
+    "vite": { "optional": true },
+    "webpack": { "optional": true }
   },
   "scripts": {
-    "build": "tsdown src/index.ts src/rules.ts src/rules-eslint.ts src/vite.ts src/webpack.ts src/rspack.ts src/rollup.ts src/rolldown.ts src/esbuild.ts src/unplugin.ts src/cli.ts --format esm --dts && node ./scripts/copy-skills.mjs",
+    "build": "tsdown && node ./scripts/copy-runtime-assets.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "files": [
     "dist",
-    "skills"
+    "skills",
+    "README.zh-CN.md",
+    "docs/guide"
   ]
 }

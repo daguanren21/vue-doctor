@@ -7,7 +7,7 @@
 Vue diagnostics and the Vite host integration are built in. Official ESLint core rules are registered as `eslint/<rule-name>` and can be enabled explicitly:
 
 ```ts
-import { defineDoctorConfig } from 'vue-doctor'
+import { defineDoctorConfig } from '@daguanren21/vue-doctor'
 
 export default defineDoctorConfig({
   eslint: { mode: 'builtin' },
@@ -16,6 +16,8 @@ export default defineDoctorConfig({
 ```
 
 ESLint delegates default to disabled. Use `vue-doctor rules list` or `vue-doctor rules explain eslint/no-debugger` to inspect them. Detecting a Vite version does not establish Vite diagnostic coverage; coverage comes from rules that actually execute.
+
+The isolated built-in ESLint engine initializes only for a selected, executable document batch. Its complete official rule catalog remains available without loading every rule implementation; metadata is precomputed for the pinned ESLint version, and a genuinely different installed version is read from its actual rules. Project-ESLint discovery and configuration validation keep their existing behavior.
 
 ## Vue migration and correctness checks
 
@@ -58,7 +60,7 @@ The template key is explicit in source, and Vue's IDE support and `vue-tsc` can 
 Enable opt-in modernization hints when `eslint-plugin-vue` is not already reporting the same migration:
 
 ```ts
-import { defineDoctorConfig } from 'vue-doctor'
+import { defineDoctorConfig } from '@daguanren21/vue-doctor'
 
 export default defineDoctorConfig({
   rules: {
@@ -83,6 +85,38 @@ Migration and correctness guidance is broader than template refs:
 - Check component-library props, events, slots, `v-model`, fallthrough, and event payloads against the installed package version.
 
 Rules that overlap with `eslint-plugin-vue` remain opt-in. Doctor-specific compatibility, package-contract, watcher, lifecycle, reactivity, and coverage checks stay enabled by default.
+
+## Vue AI Skills-informed checks
+
+Five opt-in Vue 3 checks were selected by comparing the community [Vue AI Skills](https://github.com/vuejs-ai/skills) guidance with existing Doctor coverage and the official Vue contracts. They require no skill installation and do not change the default rule selection.
+
+| Rule | What it detects |
+| --- | --- |
+| `vue-computed-async-getter` | A proven Vue `computed()` call has an inline async getter. |
+| `vue-computed-source-mutation` | A getter directly writes to stable external reactive state, or sorts/reverses a proven source array in place. |
+| `vue-event-passive-prevent` | A native HTML/SVG listener combines `.passive` with `.prevent`. |
+| `vue-memo-invalid-dependencies` | On Vue 3.2+, `v-memo` receives a literal or object expression rather than an array. |
+| `vue-transition-group-mode` | A static `TransitionGroup` receives a nonempty, statically known `mode` that cannot control list transition order. |
+
+Enable the desired checks in the consuming project's configuration:
+
+```ts
+import { defineDoctorConfig } from '@daguanren21/vue-doctor'
+
+export default defineDoctorConfig({
+  rules: {
+    'vue-computed-async-getter': 'warning',
+    'vue-computed-source-mutation': 'warning',
+    'vue-event-passive-prevent': 'warning',
+    'vue-memo-invalid-dependencies': 'error',
+    'vue-transition-group-mode': 'warning'
+  }
+})
+```
+
+The checks are deliberately bounded: computed setters, generator getter bodies, deferred nested functions, getter-local state and array copies are not source mutations. Type-only wrappers do not change binding identity. Indirect getter/helper effects, aliases and class-body effects are not inferred; array-method detection is not whole-program or escape-safe analysis. Unknown memo expressions remain unknown, not invalid; `[]` is valid. Native-listener checks exclude custom/dynamic components and VNode hooks. Vue 2 and unresolved version evidence do not activate these Vue 3 checks.
+
+The guidance does **not** impose Composition API, TypeScript, `shallowRef()` for every primitive, component-size thresholds, or a ban on computed getter parameters. Vue 3.4's previous-value getter parameter remains valid. See Vue's [computed purity](https://vuejs.org/guide/essentials/computed.html#getters-should-be-side-effect-free), [event modifiers](https://vuejs.org/guide/essentials/event-handling.html#event-modifiers), [v-memo contract](https://vuejs.org/api/built-in-directives.html#v-memo), and [TransitionGroup differences](https://vuejs.org/guide/built-ins/transition-group.html#differences-from-transition).
 
 ## ESLint and Doctor rule ownership
 

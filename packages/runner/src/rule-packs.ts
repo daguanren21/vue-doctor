@@ -6,12 +6,12 @@ import type {
   DoctorRulePackReport,
   DoctorRulePackResult,
   RuleSeveritySetting
-} from '@vue-doctor/core'
+} from '@daguanren21/vue-doctor-core'
 import {
   isDoctorRuleApplicable,
   isDoctorRuleEnabled,
   resolveVueVersion
-} from '@vue-doctor/core'
+} from '@daguanren21/vue-doctor-core'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 
 type RuleSelection =
@@ -106,48 +106,42 @@ export async function runRulePacks(
       skippedChecks.push(skipped)
       incomplete ||= skipped.required
     }
-    let checks: DoctorRuleCheck[] | undefined
-    const hasSelectionMetadata = pack.rules.some((rule) => (
-      rule.defaultEnabled === false || hasVueVersionConstraint(rule)
-    ))
-    if (result.checks || pack.rules.some((rule) => rule.verification) || hasSelectionMetadata) {
-      const byCode = new Map<string, DoctorRuleCheck>()
-      for (const check of result.checks ?? []) {
-        if (!declared.has(check.ruleCode)) throw new Error(`Rule pack ${pack.name} checked undeclared rule ${check.ruleCode}.`)
-        if (byCode.has(check.ruleCode)) throw new Error(`Rule pack ${pack.name} repeated check status for ${check.ruleCode}.`)
-        byCode.set(check.ruleCode, check)
-      }
-      const requiredSkips = new Map(acceptedSkips.filter((skip) => skip.required).map((skip) => [skip.ruleCode, skip]))
-      checks = pack.rules.map((rule): DoctorRuleCheck => {
-        const selected = selection(rule)
-        if (selected.status !== 'runnable') {
-          incomplete ||= selected.status === 'unavailable'
-          return inactiveCheck(rule, selected)
-        }
-        const skipped = requiredSkips.get(rule.code)
-        const recorded = byCode.get(rule.code)
-        let check: DoctorRuleCheck = skipped
-          ? { ruleCode: rule.code, status: 'unavailable', reason: skipped.evidence[0]?.message ?? skipped.reason }
-          : recorded ?? {
-              ruleCode: rule.code,
-              status: rule.verification && rule.verification !== 'static' ? rule.verification : 'unavailable',
-              reason: rule.verification && rule.verification !== 'static' ? rule.description : 'No per-rule execution evidence was reported.'
-            }
-        if (selected.incompleteReason) {
-          incomplete = true
-          if (check.status === 'checked' || check.status === 'partial') {
-            check = { ...check, status: 'partial', reason: check.reason ?? selected.incompleteReason }
-          }
-        }
-        incomplete ||= !['checked', 'not-applicable', 'disabled'].includes(check.status)
-        return check
-      })
+    const byCode = new Map<string, DoctorRuleCheck>()
+    for (const check of result.checks ?? []) {
+      if (!declared.has(check.ruleCode)) throw new Error(`Rule pack ${pack.name} checked undeclared rule ${check.ruleCode}.`)
+      if (byCode.has(check.ruleCode)) throw new Error(`Rule pack ${pack.name} repeated check status for ${check.ruleCode}.`)
+      byCode.set(check.ruleCode, check)
     }
+    const requiredSkips = new Map(acceptedSkips.filter((skip) => skip.required).map((skip) => [skip.ruleCode, skip]))
+    const checks = pack.rules.map((rule): DoctorRuleCheck => {
+      const selected = selection(rule)
+      if (selected.status !== 'runnable') {
+        incomplete ||= selected.status === 'unavailable'
+        return inactiveCheck(rule, selected)
+      }
+      const skipped = requiredSkips.get(rule.code)
+      const recorded = byCode.get(rule.code)
+      let check: DoctorRuleCheck = skipped
+        ? { ruleCode: rule.code, status: 'unavailable', reason: skipped.evidence[0]?.message ?? skipped.reason }
+        : recorded ?? {
+            ruleCode: rule.code,
+            status: rule.verification && rule.verification !== 'static' ? rule.verification : 'unavailable',
+            reason: rule.verification && rule.verification !== 'static' ? rule.description : 'No per-rule execution evidence was reported.'
+          }
+      if (selected.incompleteReason) {
+        incomplete = true
+        if (check.status === 'checked' || check.status === 'partial') {
+          check = { ...check, status: 'partial', reason: check.reason ?? selected.incompleteReason }
+        }
+      }
+      incomplete ||= !['checked', 'not-applicable', 'disabled'].includes(check.status)
+      return check
+    })
     reports.push({
       name: pack.name,
       rules: pack.rules,
       coverageStatus: incomplete ? 'partial' : 'complete',
-      ...(checks ? { checks } : {})
+      checks
     })
   }
   return { diagnostics, skippedChecks, reports }

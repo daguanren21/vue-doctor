@@ -1,2 +1,2 @@
 /** Native ESTree authoring and official ESLint delegates. */
-export * from '@vue-doctor/rules-eslint'
+export * from '@daguanren21/vue-doctor-rules-eslint'

@@ -21,14 +21,14 @@ For a running CLI Inspector or Vite host, use the Devframe connector:
 
 Call `devframe_connect_list-instances`, select the project's instance, then use `devframe_connect_call-tool` with its port, tool name and arguments. Independent Inspector hosts publish their instance and serve MCP at `/vue-doctor/__mcp`. In a native Vite DevTools hub, discovery, the MCP endpoint and authentication belong to that host. A custom mount base also changes the MCP path. The connector supplies the required `Origin` header; direct HTTP clients must send the instance's origin too.
 
-For a project without a running Inspector or dev server, build this checkout and point the headless stdio entry at its CLI:
+For a project without a running Inspector or dev server, install `@daguanren21/vue-doctor` using [Install and scan](../../README.md#install-and-scan), then launch the project's installed CLI as a headless stdio server:
 
 ```json
 {
   "mcpServers": {
     "vue-doctor": {
-      "command": "node",
-      "args": ["/absolute/path/to/vue-doctor/packages/vue-doctor/dist/cli.mjs", "mcp", "/path/to/project"]
+      "command": "pnpm",
+      "args": ["--dir", "/path/to/project", "exec", "vue-doctor", "mcp", "/path/to/project"]
     }
   }
 }
@@ -52,7 +52,7 @@ The MCP tools inspect diagnostics; they do not apply edits, open an editor, or e
 
 ## Install the agent skill
 
-After linking this checkout's built package into the consuming project, install its bundled skill into local coding agents:
+With `@daguanren21/vue-doctor` installed in the consuming project, install its bundled skill into local coding agents:
 
 ```bash
 pnpm exec vue-doctor install

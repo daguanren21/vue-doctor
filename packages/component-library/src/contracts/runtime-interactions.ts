@@ -1,9 +1,10 @@
 import { readFile } from 'node:fs/promises'
-import { dirname, extname, join, resolve } from 'node:path'
+import { basename, dirname, extname, join, resolve } from 'node:path'
 import { babelParse, extractIdentifiers, walkIdentifiers, type SFCDescriptor, type SFCScriptBlock } from '@vue/compiler-sfc'
 import type { EvidenceFile } from '../types.js'
 import type { ComponentContract, EventContract } from './types.js'
-import { parseRuntimeSfc } from './runtime-sfc.js'
+import { createRuntimeSfcCompiler, parseRuntimeSfc } from './runtime-sfc.js'
+import type { RuntimeSfcCompiler } from './runtime-sfc.js'
 import { readMappedRuntimeEntry } from './runtime-bundle.js'
 
 type ScriptNode = { type: string; [key: string]: unknown }
@@ -35,6 +36,13 @@ export interface RuntimePublicComponent extends RuntimeOptionEvidence {
   descriptor?: SFCDescriptor
 }
 
+export interface RuntimeInteractionReader {
+  compileSfc: RuntimeSfcCompiler
+  readSfc(descriptor: SFCDescriptor, file: string): Promise<RuntimeOptionEvidence>
+  readModule(source: string, file: string): Promise<RuntimeOptionEvidence | undefined>
+  readPublicComponents(entries: readonly EvidenceFile[], packageRoot: string): Promise<RuntimePublicComponent[]>
+}
+
 interface ModelModule {
   file: string
   body: ScriptNode[]
@@ -43,11 +51,13 @@ interface ModelModule {
   unstableBindings?: Set<string>
   staticExports?: Map<string, ScriptNode>
   descriptor?: SFCDescriptor
+  unavailableProps?: boolean
 }
 
 type LoadModelModule = (specifier: string, importer: string) => Promise<ModelModule | undefined>
 
-export function createRuntimeInteractionReader(files: readonly EvidenceFile[]) {
+export function createRuntimeInteractionReader(files: readonly EvidenceFile[]): RuntimeInteractionReader {
+  const compileSfc = createRuntimeSfcCompiler()
   const available = new Set(files.map(file => file.path))
   const modules = new Map<string, Promise<ModelModule | undefined>>()
   const load: LoadModelModule = async (specifier, importer) => {
@@ -58,16 +68,17 @@ export function createRuntimeInteractionReader(files: readonly EvidenceFile[]) {
     if (!file) return undefined
     let module = modules.get(file)
     if (!module) {
-      module = readFile(file, 'utf8').then(source => parseModelModule(source, file))
+      module = readFile(file, 'utf8').then(source => parseModelModule(source, file, compileSfc))
         .catch(() => undefined)
       modules.set(file, module)
     }
     return module
   }
   return {
-    readSfc: (descriptor: SFCDescriptor, file: string) => readSfcInteractions(descriptor, file, load),
+    compileSfc,
+    readSfc: (descriptor: SFCDescriptor, file: string) => readSfcInteractions(descriptor, file, load, compileSfc),
     readModule: async (source: string, file: string): Promise<RuntimeOptionEvidence | undefined> => {
-      const module = parseModelModule(source, file)
+      const module = parseModelModule(source, file, compileSfc)
       if (!module) return undefined
       const value = asNode(module.body.find(node => node.type === 'ExportDefaultDeclaration')?.declaration)
       const resolved = value && await resolveStaticValue(value, module, load, new Set(), new Set())
@@ -79,14 +90,14 @@ export function createRuntimeInteractionReader(files: readonly EvidenceFile[]) {
     readPublicComponents: async (entries: readonly EvidenceFile[], packageRoot: string): Promise<RuntimePublicComponent[]> => {
       const result: RuntimePublicComponent[] = []
       for (const entry of entries) {
-        let module = await load(`./${entry.path.split('/').pop()!}`, entry.path)
+        let module = await load(`./${basename(entry.path)}`, entry.path)
         if (!module) continue
         let names = await exportedNames(module, load, new Set())
         const entrySources = [entry.path]
         if (!names.size) {
           const mapped = await readMappedRuntimeEntry(entry, packageRoot, available)
           if (!mapped) continue
-          module = parseModelModule(mapped.source, mapped.file)
+          module = parseModelModule(mapped.source, mapped.file, compileSfc)
           if (!module) continue
           modules.set(mapped.file, Promise.resolve(module))
           entrySources.push(mapped.mapFile, mapped.file)
@@ -119,7 +130,7 @@ interface ResolvedValue {
   module: ModelModule
 }
 
-function parseModelModule(source: string, file: string): ModelModule | undefined {
+function parseModelModule(source: string, file: string, compileSfc: RuntimeSfcCompiler): ModelModule | undefined {
   if (extname(file) !== '.vue') {
     const module: ModelModule = { file, body: parseStatements(source, scriptLanguage(file)) }
     if (module.body.some(statement => statement.type.startsWith('Export'))
@@ -153,7 +164,7 @@ function parseModelModule(source: string, file: string): ModelModule | undefined
   }
   const { descriptor, errors } = parseRuntimeSfc(source, file)
   if (errors.length || descriptor.script?.src || descriptor.scriptSetup?.src) return undefined
-  const module = sfcModelModule(descriptor, file)
+  const module = sfcModelModule(descriptor, file, compileSfc)
   // Aliased options combined with script setup require proving which options the compiler replaces.
   if (descriptor.script && descriptor.scriptSetup && !componentOptions(module.body)) return undefined
   return { ...module, descriptor }
@@ -306,6 +317,10 @@ async function readOptionEvidence(options: ScriptNode, module: ModelModule, load
       continue
     }
     render = effectiveOption(layer.value, 'render') ?? render
+    if (layer.module.unavailableProps) {
+      propsOptions.length = 0
+      continue
+    }
     const props = propertyValue(layer.value, 'props')
     if (!props) continue
     const resolved = await resolveStaticValue(props, layer.module, load, sources, new Set())
@@ -336,7 +351,8 @@ async function readOptionEvidence(options: ScriptNode, module: ModelModule, load
 export async function readSfcInteractions(
   descriptor: SFCDescriptor,
   file = '',
-  load?: LoadModelModule
+  load?: LoadModelModule,
+  compileSfc: RuntimeSfcCompiler = createRuntimeSfcCompiler()
 ): Promise<RuntimeOptionEvidence> {
   const events = new Map<string, EventContract>()
   let interactionSources: string[] = []
@@ -346,7 +362,7 @@ export async function readSfcInteractions(
   const add = (name: string | undefined): void => {
     if (name) events.set(name, { name, source: 'emit', signatures: [] })
   }
-  const module = sfcModelModule(descriptor, file)
+  const module = sfcModelModule(descriptor, file, compileSfc)
   let vue2Model: ModelContract | null = descriptor.script ? null : { prop: 'value', event: 'input' }
   if (descriptor.script && !descriptor.script.src && (!descriptor.scriptSetup || componentOptions(module.body))) {
     const value = asNode(module.body.find(node => node.type === 'ExportDefaultDeclaration')?.declaration)
@@ -378,25 +394,32 @@ function findSetupEmits(body: ScriptNode[]): ScriptNode | undefined {
   return undefined
 }
 
-function sfcModelModule(descriptor: SFCDescriptor, file: string): ModelModule {
+function sfcModelModule(descriptor: SFCDescriptor, file: string, compileSfc: RuntimeSfcCompiler): ModelModule {
   const body = descriptor.script && !descriptor.script.src
     ? parseStatements(descriptor.script.content, descriptor.script.lang) : []
   const scriptSetupBody = descriptor.scriptSetup && !descriptor.scriptSetup.src
     ? parseStatements(descriptor.scriptSetup.content, descriptor.scriptSetup.lang) : undefined
   const options = componentOptions(body)
+  const compiled = scriptSetupBody ? compileSfc(descriptor) : undefined
+  const unavailableProps = Boolean(scriptSetupBody && !compiled?.propsResolved)
   if (scriptSetupBody && options) {
     const emits = findSetupEmits(scriptSetupBody)
+    const props = compiled?.propsResolved ? compiled.props : undefined
     const properties = nodes(options.properties).filter(property => (
       propertyName(property) !== 'setup' && (!emits || propertyName(property) !== 'emits')
+      && ((!props && !unavailableProps) || propertyName(property) !== 'props')
     ))
     if (emits) properties.push({
       type: 'ObjectProperty', key: { type: 'Identifier', name: 'emits' },
       value: nodes(emits.arguments)[0] ?? { type: 'ArrayExpression', elements: [] }
     })
+    if (props) properties.push({
+      type: 'ObjectProperty', key: { type: 'Identifier', name: 'props' }, value: props
+    })
     const exported = body.find(statement => statement.type === 'ExportDefaultDeclaration')!
     exported.declaration = { ...options, properties }
   }
-  return { file, body, ...(scriptSetupBody ? { scriptSetupBody } : {}) }
+  return { file, body, ...(scriptSetupBody ? { scriptSetupBody } : {}), ...(unavailableProps ? { unavailableProps } : {}) }
 }
 
 function declaresBinding(body: ScriptNode[], name: string): boolean {
@@ -413,7 +436,7 @@ function parseStatements(source: string, lang?: string): ScriptNode[] {
   try {
     return babelParse(source, {
       sourceType: 'module',
-      plugins: [...(lang === 'ts' || lang === 'tsx' ? ['typescript' as const] : []), 'jsx']
+      plugins: [...(lang === 'ts' || lang === 'tsx' ? ['typescript' as const, 'decorators-legacy' as const, 'explicitResourceManagement' as const] : []), 'importAttributes', 'jsx']
     }).program.body as unknown as ScriptNode[]
   } catch {
     return []
@@ -564,11 +587,12 @@ function unstableOptionBindings(module: ModelModule): ReadonlySet<string> {
     }
     if (node.type === 'AssignmentExpression' || node.type === 'ForInStatement' || node.type === 'ForOfStatement') addTarget(asNode(node.left))
     else if (node.type === 'UpdateExpression' || (node.type === 'UnaryExpression' && node.operator === 'delete')) addTarget(asNode(node.argument))
-    else if (node.type === 'CallExpression' || node.type === 'NewExpression') {
-      if (unwrapDefineComponent(node, module) || isVueComponentRegistration(node, module)) return
+    else if (node.type === 'CallExpression' || node.type === 'NewExpression' || node.type === 'TaggedTemplateExpression') {
+      if (node.type !== 'TaggedTemplateExpression' && (unwrapDefineComponent(node, module) || isVueComponentRegistration(node, module))) return
       // Passing options to arbitrary code no longer proves their original shape.
-      for (const argument of nodes(node.arguments)) addReferences(argument, unstable)
-      if (asNode(node.callee)?.type === 'MemberExpression') addTarget(asNode(node.callee))
+      for (const argument of nodes(node.arguments ?? asNode(node.quasi)?.expressions)) addReferences(argument, unstable)
+      const callee = asNode(node.callee ?? node.tag)
+      if (callee?.type === 'MemberExpression') addTarget(callee)
     }
   })
   // Writes and escapes through aliases invalidate their original option objects.

@@ -2,7 +2,7 @@ import type { Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { initHub } from '@devframes/hub/initiate'
 import type { DevframeHubUi, HubInstance } from '@devframes/hub/initiate'
-import type { DoctorReport } from '@vue-doctor/core'
+import type { DoctorReport } from '@daguanren21/vue-doctor-core'
 import type { DevframeDefinition, DevframeNodeContext, StaticAssetsSource } from 'devframe'
 import {
   createInspectorCompatibilityMiddleware,

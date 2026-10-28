@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Icon } from '@iconify/vue'
-import type { InspectorSnapshot, InspectorWorkspaceRoute } from '@vue-doctor/inspector-protocol'
+import type { InspectorSnapshot, InspectorWorkspaceRoute } from '@daguanren21/vue-doctor-inspector-protocol'
 import type { InspectorMessages } from '../../i18n'
 import { inspectorWorkspaceViews } from '../../lib/icons'
 

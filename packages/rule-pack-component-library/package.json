@@ -1,8 +1,12 @@
 {
-  "name": "@vue-doctor/rule-pack-component-library",
-  "version": "0.0.0",
+  "name": "@daguanren21/vue-doctor-rule-pack-component-library",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
   "type": "module",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.mts",
@@ -14,9 +18,9 @@
     }
   },
   "dependencies": {
-    "@vue-doctor/component-library": "workspace:*",
-    "@vue-doctor/core": "workspace:*",
-    "@vue-doctor/source": "workspace:*"
+    "@daguanren21/vue-doctor-component-library": "workspace:*",
+    "@daguanren21/vue-doctor-core": "workspace:*",
+    "@daguanren21/vue-doctor-source": "workspace:*"
   },
   "scripts": {
     "build": "tsdown src/index.ts src/rules.ts --format esm --dts",

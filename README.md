@@ -2,178 +2,141 @@
 
 [简体中文](./README.zh-CN.md)
 
-Diagnose Vue 2.7 and Vue 3 projects using their installed Vue version and component-library contracts. Inspect findings, source evidence and analysis coverage in the CLI, Inspector or an agent through MCP.
+Diagnose Vue 2.7 and Vue 3 projects using their installed Vue version and component-library contracts. Explore findings, source evidence and coverage in the CLI, Inspector or an MCP client.
 
-Requires **Node.js >= 20.19.0**. Vue, Vite, Nuxt and UI libraries are detected from your project.
+Use **Node.js 26** (supported engines: `^22.18.0 || >=24.11.0`). Run with Node.js even if dependencies are installed with Bun; explicit Bun runtime execution is not supported. Vue, Vite, Nuxt and UI libraries are detected from your project, not installed by Doctor.
 
-## Quick start
+## Install and scan
 
-Build this source distribution first. The unscoped npm name belongs to a different project; use this checkout rather than installing that registry package:
-
-```bash
-git clone https://github.com/daguanren21/vue-doctor.git
-cd vue-doctor
-pnpm install --frozen-lockfile
-pnpm build
-node packages/vue-doctor/dist/cli.mjs /path/to/your-project
-```
-
-Large reports are grouped by rule with representative locations. Use `--verbose` for every finding and its evidence, or `--json-out doctor-report.json` for the complete report. Coverage gaps remain visible in the summary.
-
-For repeated use and executable configs/plugins, link the built package into the consuming project. Keep this checkout and its dependencies available:
+Built-in rules and internal modules are included in **`@daguanren21/vue-doctor`**. No separate rule-pack or internal npm packages are needed.
 
 ```bash
-pnpm --dir /path/to/your-project link /absolute/path/to/vue-doctor/packages/vue-doctor
-pnpm --dir /path/to/your-project exec vue-doctor --scope src
+npm install -g @daguanren21/vue-doctor
+vue-doctor /absolute/path/to/project
+vue-doctor /absolute/path/to/project --scope src
+vue-doctor /absolute/path/to/project --inspect
 ```
 
-## Inspector
+Inside the project, `vue-doctor` scans the current directory. `--scope` limits diagnostics to a project-relative file or directory; it does not select a different project root. Use `--verbose` for full finding details or `--json-out doctor-report.json` for a complete report.
+
+For TypeScript configuration, custom-rule imports or build-tool integration, also make the **same public package** available in the consuming project:
 
 ```bash
-pnpm --dir /path/to/your-project exec vue-doctor --inspect
+npm install --save-dev @daguanren21/vue-doctor
 ```
 
-Browse findings, coverage, rules and suppression audits. Filtering reads the current report; **Run again** requests a new scan. The local process stays running until you press `Ctrl+C`.
+A global CLI installation alone does not make package imports resolvable from your project's config files.
 
-[Inspector guide](./docs/guide/inspector.md)
+## Inspector and Vite
 
-## Vite integration
+`vue-doctor /absolute/path/to/project --inspect` opens a local Inspector and keeps the process running until `Ctrl+C`. Browse findings, source evidence, coverage, rules and suppression audits. Filtering reads the current snapshot; **Run again** requests a new scan.
 
-Link this checkout's built `vue-doctor` package as above, then add `vueDoctor()` to your existing Vite plugins:
+To integrate with an existing Vite project, add `vueDoctor()` to its existing `vite.config.ts` plugins:
 
 ```ts
 import { defineConfig } from 'vite'
-import { vueDoctor } from 'vue-doctor/vite'
+import { vueDoctor } from '@daguanren21/vue-doctor/vite'
 
 export default defineConfig({
   plugins: [
-    // Keep your existing Vue or Vue 2 plugins here.
+    // Keep your existing Vue or Vue 2 plugin here.
     vueDoctor()
   ]
 })
 ```
 
-The Inspector is available at `/vue-doctor/`. webpack, Rspack, Rollup, Rolldown and esbuild adapters are covered in the [integration guide](./docs/guide/usage.md#build-tools).
+Start your normal Vite dev server and open `/vue-doctor/`. Vite is needed only for this integration, not for standalone CLI scans. See the [Inspector guide](./docs/guide/inspector.md) and [other build tools](./docs/guide/usage.md#build-tools).
 
-## Configuration
+## Wrap and enable a custom rule
 
-Optional `doctor.config.ts`:
+`defineRule` wraps a reusable check; `oxcRule` supplies its script AST visitor. Save this separate module as **`doctor-rules.ts`** in the consuming project:
 
 ```ts
-import { defineDoctorConfig } from 'vue-doctor'
+import { defineRule, oxcRule } from '@daguanren21/vue-doctor/rules'
 
-export default defineDoctorConfig({
-  scope: 'src',
-  rules: {
-    'component-prop-type-mismatch': 'error'
-  }
+export const noDebugger = defineRule({
+  meta: {
+    title: 'Remove debugger statements',
+    description: 'Do not commit debugger statements.'
+  },
+  check: oxcRule({
+    create: context => ({
+      DebuggerStatement(node) {
+        context.report({ node, message: 'Remove this debugger statement.' })
+      }
+    })
+  })
 })
 ```
 
-Vue and component-library checks are built in. Without a project ESLint config, ESLint core delegates are available but disabled by default. Unknown rule codes are configuration errors.
-
-**Existing ESLint config:** Doctor reuses your project's ESLint and `eslint.config.*`, including configs using `@antfu/eslint-config`, `@icebreakers/eslint-config` or local plugins. Rule options, file overrides and ignores follow that config. See [ESLint integration](./docs/guide/configuration.md#project-eslint).
-
-**Optional dead-code analysis:** Explicitly register the separate Knip rule pack to find unused files, exports and types, or duplicate exports. See [setup and coverage limits](./docs/guide/configuration.md#optional-project-dead-code-analysis).
-
-### Third-party UI libraries
-
-Doctor resolves libraries from the consuming project, using component imports and global plugin registrations as evidence. It reads published metadata and type declarations by default, rather than scanning every installed dependency. This works with installed ecosystem packages such as Element Plus (`element-plus`) and Element UI (`element-ui`); the available contracts determine coverage.
-
-For explicit selection, add `ui` to `doctor.config.ts`:
+Register it with `defineRules` and enable it in **`doctor.config.ts`** beside that module:
 
 ```ts
-import { defineDoctorConfig } from 'vue-doctor'
-
-export default defineDoctorConfig({
-  ui: {
-    autoDetect: true,
-    libraries: [
-      'element-plus',
-      { package: '@acme/ui', aliases: ['@ui'] }
-    ],
-    runtimeContracts: true
-  }
-})
-```
-
-Use only packages already available to your project. `@acme/ui` is a synthetic example: replace or remove it. `aliases` maps an import root such as `@ui` to that package's contracts; it does not configure your bundler. Set `autoDetect: false` to analyze only `ui.libraries`. The optional `ui.runtimeContracts: true` supplements contracts with statically analyzed published runtime/SFC source; it does not execute the library. Missing exports, dynamic behavior or unresolved contracts remain unknown and leave coverage incomplete—not a clean bill of health. No additional Vue, Vite or UI-library installation is required to inspect an existing project.
-
-[UI contracts, aliases and evidence limits](./docs/guide/configuration.md#project-configuration)
-
-### Custom rule packs
-
-Use `defineRule`, `defineRules` and `oxcRule` from `vue-doctor/rules` to register multiple actual checks in an executable `doctor.config.ts`:
-
-```ts
-import { defineDoctorConfig } from 'vue-doctor'
-import { defineRule, defineRules, oxcRule } from 'vue-doctor/rules'
+import { defineDoctorConfig } from '@daguanren21/vue-doctor'
+import { defineRules } from '@daguanren21/vue-doctor/rules'
+import { noDebugger } from './doctor-rules.ts'
 
 const teamRules = defineRules({
   name: 'team',
-  rules: {
-    'no-var': defineRule({
-      meta: { title: 'Avoid var', description: 'Use let or const.' },
-      check: oxcRule({
-        create: context => ({
-          VariableDeclaration(node) {
-            if (node.kind === 'var') context.report({ node, message: 'Use let or const.' })
-          }
-        })
-      })
-    }),
-    'no-debugger': defineRule({
-      meta: { title: 'Remove debugger', description: 'Do not commit debugger statements.' },
-      check: oxcRule({
-        create: context => ({
-          DebuggerStatement(node) {
-            context.report({ node, message: 'Remove this debugger statement.' })
-          }
-        })
-      })
-    })
-  }
+  rules: { 'no-debugger': noDebugger }
 })
 
 export default defineDoctorConfig({
   rulePacks: [teamRules],
-  rules: { 'team/no-var': 'warning', 'team/no-debugger': 'error' }
+  rules: { 'team/no-debugger': 'error' }
 })
 ```
 
-Run `pnpm exec vue-doctor --config ./doctor.config.ts --scope src`. The pack name namespaces each rule; severity overrides use the full code. Keep private policy modules/packages outside the public repository, or in untracked, locally ignored files—do not publish them with your shared config. Rule packs are trusted executable code, not JSON, and Doctor does not download them.
+The pack name namespaces the rule: severity uses the **full code** `team/no-debugger` (`error`, `warning`, `info` or `off`). Importing a rule alone does not register it; `rulePacks` does. Unknown rule codes are configuration errors.
 
-[Complete guide: export a reusable pack, import it and exercise both rules](./docs/guide/custom-rules.md)
+To try it, create **`src/rule-demo.ts`** in a scratch project:
 
-## CI
-
-```bash
-pnpm exec vue-doctor --fail-on error --fail-on-incomplete-coverage
+```ts
+debugger
+export {}
 ```
 
-Local scans are non-blocking for findings by default; configuration and operational errors still fail. A run is clean only when findings are empty **and** coverage is complete.
-
-[CI configuration, changed-file scans and local suppression](./docs/guide/configuration.md)
-
-## Agents
-
-Start a standalone MCP server without a dev server:
+From that project, run:
 
 ```bash
-node /absolute/path/to/vue-doctor/packages/vue-doctor/dist/cli.mjs mcp /path/to/project
+vue-doctor --config ./doctor.config.ts --scope src/rule-demo.ts --json
 ```
 
-For an already running Inspector, connect through Devframe. See the [MCP and agent guide](./docs/guide/mcp.md) for client configuration and skill installation.
+Expect a `team/no-debugger` error with a source location. Remove `debugger` to resolve that finding; other enabled rules and coverage gaps may remain. These are teaching rules—prefer existing ESLint rules when they meet your needs.
 
-## Documentation
+Configs and imported packs are **trusted executable code**. Doctor does not download packs; JSON config cannot import rule functions. Keep private policies in external/private modules, or untracked, locally ignored files; never publish them with shared configuration. See [rule authoring](./docs/guide/custom-rules.md) for reusable packs, parser backends and evidence requirements.
 
-| Topic | Guide |
-| --- | --- |
-| CLI and build tools | [Usage](./docs/guide/usage.md) |
-| Configuration, CI and suppression | [Configuration](./docs/guide/configuration.md) |
-| Built-in rules and Vue versions | [Rules](./docs/guide/rules.md) |
-| Custom AST rules | [Rule authoring](./docs/guide/custom-rules.md) |
-| Reports, JavaScript API and coverage | [Reports](./docs/guide/reports.md) |
-| Caching and performance | [Performance](./docs/guide/performance.md) |
+## MCP client
 
-[All guides](./docs/guide/README.md)
+After the global installation above, add this stdio server to your MCP client's configuration. Replace the absolute project path:
+
+```json
+{
+  "mcpServers": {
+    "vue-doctor": {
+      "command": "vue-doctor",
+      "args": ["mcp", "/absolute/path/to/project"]
+    }
+  }
+}
+```
+
+The client must find `vue-doctor` on its `PATH`; otherwise use the absolute executable path as `command`. No dev server or browser is required. The server owns its session until the client disconnects; stdout is reserved for MCP messages. Add `"--scope", "src"` to `args` to constrain diagnostics.
+
+Start with `vue-doctor_help` and `vue-doctor_get-overview`, then query findings, source and coverage using the returned `snapshotId`. These tools do not edit source files or apply fixes. `vue-doctor_rescan` explicitly runs analysis again after authorized changes; empty filtered results do not prove a clean project. See [MCP, Inspector connections and agent skills](./docs/guide/mcp.md).
+
+## Coverage and CI
+
+Vue and component-library checks are built in. Doctor resolves UI contracts from the consuming project's imports, plugin registrations, published metadata and types. Missing contracts and dynamic behavior remain unknown, not verified. Existing project ESLint configuration can also supply rules; without one, ESLint core delegates are available but disabled by default.
+
+Local scans do not fail on findings by default; configuration and operational errors still fail. For CI:
+
+```bash
+vue-doctor /absolute/path/to/project --fail-on error --fail-on-incomplete-coverage
+```
+
+A project is clean only when findings are empty **and coverage is complete**. See [configuration, ESLint, UI contracts and suppression](./docs/guide/configuration.md).
+
+## More guides
+
+[CLI and build tools](./docs/guide/usage.md) · [Built-in rules](./docs/guide/rules.md) · [Reports and JavaScript API](./docs/guide/reports.md) · [Performance](./docs/guide/performance.md) · [All guides](./docs/guide/README.md)

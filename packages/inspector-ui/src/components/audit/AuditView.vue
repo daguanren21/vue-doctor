@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Icon } from '@iconify/vue'
-import type { InspectorAuditItem, InspectorPage } from '@vue-doctor/inspector-protocol'
+import type { InspectorAuditItem, InspectorPage } from '@daguanren21/vue-doctor-inspector-protocol'
 import type { InspectorAuditFilters } from '../../composables/useInspectorWorkspace'
 import type { InspectorMessages } from '../../i18n'
 import { inspectorIcons } from '../../lib/icons'

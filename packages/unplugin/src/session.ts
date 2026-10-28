@@ -1,4 +1,4 @@
-import type { DoctorReport, DoctorRunOptions } from '@vue-doctor/core'
+import type { DoctorReport, DoctorRunOptions } from '@daguanren21/vue-doctor-core'
 import type { VueDoctorViteServices } from './vite.js'
 
 export interface HostDoctorAnalysisSession {

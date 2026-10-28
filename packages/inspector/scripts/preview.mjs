@@ -1,13 +1,12 @@
 import { randomUUID } from 'node:crypto'
 import { createServer } from 'node:http'
 import { readFile } from 'node:fs/promises'
-import { dirname, extname, join } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
-import { renderInspectorHtml } from '../../inspector-ui/assets.mjs'
+import { extname, join } from 'node:path'
+import { pathToFileURL } from 'node:url'
+import { inspectorClientAssets as uiDist, renderInspectorHtml } from '../../inspector-ui/dist/assets.mjs'
 import { createInspectorHost } from '../dist/host.mjs'
 
 const workspace = '/workspace/example-app/'
-const uiDist = join(dirname(fileURLToPath(import.meta.url)), '../../inspector-ui/dist')
 
 export const createErrorTokenStore = (maxTokens = 64) => {
   const attempts = new Map()

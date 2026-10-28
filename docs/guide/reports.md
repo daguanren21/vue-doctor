@@ -7,7 +7,7 @@
 The public facade returns the same report as the CLI and Vite integration:
 
 ```ts
-import { runDoctor } from 'vue-doctor'
+import { runDoctor } from '@daguanren21/vue-doctor'
 
 const report = await runDoctor()
 ```
@@ -63,6 +63,8 @@ Domain coverage distinguishes `not-covered`, `not-reported`, `partial`, and `com
 Vue API checks follow imports from `vue`, including named aliases and namespaces, and respect lexical shadowing. Compiler macros are recognized only in unshadowed `<script setup>` usage. Bare names supplied by automatic imports need explicit integration evidence; names alone do not prove a Vue API call.
 
 Missing events, slots and model events are rejected only when the relevant acceptance boundary is proven closed. Open boundaries are accepted; unknown or conflicting boundaries create required skipped checks. Event handlers may take fewer parameters or rename/ignore them. Payload diagnostics require a complete signature and fire only when every overload supplies fewer arguments than the handler requires; optional and rest parameters are retained.
+
+Prop checks preserve Vue value semantics: `count="1"` is text, while `:count="1"` is a number. Boolean presence, empty strings and prop-name strings follow Vue casting rules. If installed contracts cannot establish String/Boolean constructor precedence, or a constrained dynamic value cannot be resolved, the type check remains incomplete rather than inventing a compatible value.
 
 `diagnostics` contains supported findings about detected component usage, such as an unsupported prop, event, slot, or `v-model`, or an incompatible event payload. Each diagnostic carries a code, severity, confidence, evidence, and suggested fixes.
 An absent prop is reported as unsupported only when both the component prop boundary and Vue attribute fallthrough are proven closed. `$attrs` is treated as a forwarding edge, so Vue Doctor follows it into the receiving component and requires that component to declare or safely forward the concrete attribute. A native root is accepted only when installed DOM type evidence supports the attribute. Unresolved forwarding remains partial coverage instead of flooding the default report; opt into per-usage info diagnostics with `rules['component-attribute-unverified'] = 'info'`.

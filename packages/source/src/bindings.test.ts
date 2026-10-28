@@ -56,6 +56,68 @@ ref(3)
     expect(resolveImportedBinding(facts, references[7])).toMatchObject({ imported: 'ref' })
   })
 
+  test.each([
+    'function outer(callback = (ref) => ref(0)) {}',
+    'const outer = function(callback = function(ref) { return ref(0) }) {}',
+    'function outer(callback = function ref(ref) { return ref(0) }) {}',
+    'const outer = (callback = (ref) => ref(0)) => callback',
+    'function outer({ callback = (ref) => ref(0) } = {}) {}',
+    'function outer([callback = (ref) => ref(0)] = []) {}',
+    'function outer({ [(ref => ref(0))(local)]: value }) {}'
+  ])('resolves nested parameter-expression bindings instead of Vue imports: %s', (declaration) => {
+    const source = `<script setup lang="ts">import { ref } from 'vue'; ${declaration}</script>`
+    const parsed = parseVueSource(source, 'Fixture.vue')
+    expect(parsed.document.errors).toEqual([])
+    const program = parsed.scriptPrograms[0] as Node
+    const facts = collectScriptBindingFacts(program)
+    const reference = findIdentifiers(program, 'ref').find(node => node.range?.[0] === source.indexOf('ref(0)'))
+    expect(resolveLexicalBinding(facts, reference)).toMatchObject({ name: 'ref', kind: 'parameter' })
+    expect(resolveImportedBinding(facts, reference)).toBeUndefined()
+  })
+
+  test.each([
+    'function outer(callback = () => ref(0)) { var ref = local; ref(1) }',
+    'const outer = function(callback = () => ref(0)) { var ref = local; ref(1) }',
+    'const outer = (callback = () => ref(0)) => { var ref = local; ref(1) }',
+    'function outer({ [ref(0)]: value }) { var ref = local; ref(1) }',
+    'function outer(callback = () => ref(0)) { function ref() {} ref(1) }',
+    'function outer(callback = () => ref(0)) { let ref = local; ref(1) }'
+  ])('keeps body declarations out of parameter initialization: %s', (declaration) => {
+    const source = `<script setup lang="ts">import { ref } from 'vue'; ${declaration}</script>`
+    const parsed = parseVueSource(source, 'Fixture.vue')
+    expect(parsed.document.errors).toEqual([])
+    const program = parsed.scriptPrograms[0] as Node
+    const facts = collectScriptBindingFacts(program)
+    const references = findIdentifiers(program, 'ref')
+    const initializer = references.find(node => node.range?.[0] === source.indexOf('ref(0)'))
+    const body = references.find(node => node.range?.[0] === source.indexOf('ref(1)'))
+    expect(resolveImportedBinding(facts, initializer)).toMatchObject({ source: 'vue', imported: 'ref' })
+    expect(resolveLexicalBinding(facts, body)).toBeDefined()
+    expect(resolveImportedBinding(facts, body)).toBeUndefined()
+  })
+
+  test.each([
+    ['function outer(callback = class ref { method() { return ref(0) } }) {}', 'class'],
+    ['function outer(callback = function ref() { return ref(0) }) {}', 'function'],
+    ['function outer(callback = () => { try {} catch (ref) { ref(0) } }) {}', 'parameter']
+  ])('collects class, named function and catch scopes inside defaults: %s', (declaration, kind) => {
+    const source = `<script setup lang="ts">import { ref } from 'vue'; ${declaration}</script>`
+    const parsed = parseVueSource(source, 'Fixture.vue')
+    expect(parsed.document.errors).toEqual([])
+    const program = parsed.scriptPrograms[0] as Node
+    const reference = findIdentifiers(program, 'ref').find(node => node.range?.[0] === source.indexOf('ref(0)'))
+    expect(resolveLexicalBinding(collectScriptBindingFacts(program), reference)).toMatchObject({ name: 'ref', kind })
+  })
+
+  test('preserves simple parameter identity through body var redeclarations', () => {
+    const program = parseProgram('function handler(value) { var value; return value }')
+    const facts = collectScriptBindingFacts(program)
+    const references = findIdentifiers(program, 'value')
+    const parameter = resolveLexicalBinding(facts, references[0])
+    expect(parameter).toMatchObject({ kind: 'parameter' })
+    expect(resolveLexicalBinding(facts, references.at(-1))).toBe(parameter)
+  })
+
   test('distinguishes unbound identifiers from other-library imports and locals', () => {
     const program = parseProgram(`
 import { ref } from 'other-library'

@@ -1,5 +1,5 @@
-import { builtinRules } from 'eslint/use-at-your-own-risk'
-import { defineRule, defineRules } from '@vue-doctor/rules'
+import { createRequire } from 'node:module'
+import { defineRule, defineRules } from '@daguanren21/vue-doctor-rules'
 import {
   createProjectEslintSession,
   findProjectEslintConfig,
@@ -7,7 +7,7 @@ import {
   type ProjectEslintFilePlan,
   type ProjectEslintRuleState,
   type ProjectEslintSession
-} from '@vue-doctor/rules-eslint'
+} from '@daguanren21/vue-doctor-rules-eslint'
 import { extname, relative, resolve, sep } from 'node:path'
 import { realpath } from 'node:fs/promises'
 import type {
@@ -17,23 +17,38 @@ import type {
   DoctorRuleDefinition,
   DoctorRulePackResult,
   SkippedCheck
-} from '@vue-doctor/core'
+} from '@daguanren21/vue-doctor-core'
+import type * as EslintBuiltinApi from 'eslint/use-at-your-own-risk'
+import type EslintPackage from 'eslint/package.json'
+import { extractCoreRuleMetadata, formatCoreRuleMetadata } from './core-rule-metadata.js'
+import { eslintCoreRuleMetadata, eslintMetadataVersion } from './core-rule-metadata.generated.js'
+
+const require = createRequire(import.meta.url)
+let builtinRules: typeof EslintBuiltinApi.builtinRules | undefined
+
+function getBuiltinRules(): typeof EslintBuiltinApi.builtinRules {
+  if (!builtinRules) {
+    const api: typeof EslintBuiltinApi = require('eslint/use-at-your-own-risk')
+    builtinRules = api.builtinRules
+  }
+  return builtinRules
+}
+
+const installedEslint: typeof EslintPackage = require('eslint/package.json')
+const coreRuleMetadata = installedEslint.version === eslintMetadataVersion
+  ? eslintCoreRuleMetadata
+  : extractCoreRuleMetadata(getBuiltinRules())
 
 /** Official core delegates are built in, with opt-in selection to preserve scan defaults. */
 export const eslintRulePack: DoctorRulePack = defineRules({
   name: 'eslint',
-  rules: Object.fromEntries([...builtinRules].map(([name, module]) => [name, defineRule({
-    meta: {
-      title: module.meta?.docs?.description ?? name,
-      description: module.meta?.docs?.description ?? `Evaluate the official ESLint ${name} rule.`,
-      domain: 'conventions', verification: 'static', defaultEnabled: false, defaultSeverity: 'warning',
-      tags: ['eslint'],
-      help: {
-        problem: module.meta?.docs?.description ?? `The source violates the official ESLint ${name} rule.`,
-        remediation: `Review the finding in its source context.${module.meta?.docs?.url ? ` Rule documentation: ${module.meta.docs.url}` : ''}`
-      }
-    },
-    check: eslintRule({ module })
+  rules: Object.fromEntries(coreRuleMetadata.map(metadata => [metadata[0], defineRule({
+    meta: formatCoreRuleMetadata(metadata),
+    check: eslintRule({ module: () => {
+      const module = getBuiltinRules().get(metadata[0])
+      if (!module) throw new Error(`Installed ESLint does not provide core rule "${metadata[0]}".`)
+      return module
+    } })
   })]))
 })
 

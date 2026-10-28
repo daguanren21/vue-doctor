@@ -1,4 +1,4 @@
-import type { AnalyzeSourceTextOptions, SourceAnalysisFact, SourceDocument, TargetFiles, VueComponentUsage, VueSourceUsageReport } from '@vue-doctor/source'
+import type { AnalyzeSourceTextOptions, SourceAnalysisFact, SourceDocument, TargetFiles, VueComponentUsage, VueSourceUsageReport } from '@daguanren21/vue-doctor-source'
 import type {
   ComponentOwnership,
   CoverageStatus,

@@ -164,13 +164,13 @@ export async function readVeturAttributesContracts(
 
         const propName = normalizeVeturPropName(attribute)
         contract.props.knowledge = 'known'
-        const types = [
-          ...parseMetadataTypeString(meta?.type),
-          ...parseMetadataEnumValues(meta?.options)
-        ]
+        const types = combineMetadataTypes([
+          parseMetadataTypeString(meta?.type),
+          parseMetadataEnumValues(meta?.options)
+        ])
         const prop: PropContract = { name: propName }
-        if (types.length > 0) {
-          prop.types = uniquePropTypes(types)
+        if (types?.length) {
+          prop.types = types
         }
         const existing = contract.props.entries.get(propName)
         contract.props.entries.set(propName, existing ? mergeMetadataPropContracts(existing, prop) : prop)
@@ -236,19 +236,18 @@ function propContractFromWebTypesAttribute(attribute: WebTypesAttributeNode): Pr
     : attribute.default !== undefined
       ? false
       : undefined
-  const types = [
-    ...parseMetadataTypeField(attribute.type),
-    ...parseMetadataTypeField(attribute.value),
-    ...parseMetadataEnumValues(attribute.values ?? attribute.enum)
-  ]
-  const unique = uniquePropTypes(types)
+  const types = combineMetadataTypes([
+    parseMetadataTypeField(attribute.type),
+    parseMetadataTypeField(attribute.value),
+    parseMetadataEnumValues(attribute.values ?? attribute.enum)
+  ])
 
   const contract: PropContract = { name }
   if (required !== undefined) {
     contract.required = required
   }
-  if (unique.length > 0) {
-    contract.types = unique
+  if (types?.length) {
+    contract.types = types
   }
   return contract
 }
@@ -324,7 +323,7 @@ function getVeturTagProps(node: VeturTagNode): ContractDimension<PropContract> {
     const type = typeof attribute === 'string' ? undefined : attribute.type
     const types = type ? parseMetadataTypeString(type) : []
     const contract: PropContract = { name: propName }
-    if (types.length > 0) {
+    if (types?.length) {
       contract.types = types
     }
     return [[propName, contract]]
@@ -462,7 +461,7 @@ function addAliases(
 }
 
 
-function parseMetadataTypeField(value: unknown): PropTypeDescriptor[] {
+function parseMetadataTypeField(value: unknown): PropTypeDescriptor[] | undefined {
   if (value === undefined || value === null) {
     return []
   }
@@ -470,7 +469,7 @@ function parseMetadataTypeField(value: unknown): PropTypeDescriptor[] {
     return parseMetadataTypeString(value)
   }
   if (Array.isArray(value)) {
-    return uniquePropTypes(value.flatMap((item) => parseMetadataTypeField(item)))
+    return combineMetadataTypes(value.map((item) => parseMetadataTypeField(item)))
   }
   if (typeof value === 'object') {
     const node = value as WebTypesValueType
@@ -506,7 +505,7 @@ function parseMetadataEnumValues(
   return types
 }
 
-function parseMetadataTypeString(value: string | undefined): PropTypeDescriptor[] {
+function parseMetadataTypeString(value: string | undefined): PropTypeDescriptor[] | undefined {
   if (!value) {
     return []
   }
@@ -516,9 +515,12 @@ function parseMetadataTypeString(value: string | undefined): PropTypeDescriptor[
     return []
   }
 
-  // Union types: number | string, 'sm' | 'md'
+  // Only top-level alternatives affect the accepted value category.
   if (normalized.includes('|')) {
-    return uniquePropTypes(normalized.split('|').flatMap((part) => parseMetadataTypeString(part.trim())))
+    const alternatives = splitMetadataTypeUnion(normalized)
+    if (alternatives.length > 1) {
+      return combineMetadataTypes(alternatives.map((part) => parseMetadataTypeString(part)))
+    }
   }
 
   // Quoted literal
@@ -576,15 +578,61 @@ function parseMetadataTypeString(value: string | undefined): PropTypeDescriptor[
     return [{ kind: 'object' }]
   }
 
-  // Named aliases are opaque without their declaration; preserve incompleteness.
-  return [{ kind: 'unknown' }]
+  // Named aliases are unavailable evidence, not an explicit unrestricted unknown.
+  return undefined
+}
+
+function splitMetadataTypeUnion(value: string): string[] {
+  const parts: string[] = []
+  const closings: string[] = []
+  let quote: string | undefined
+  let start = 0
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index]!
+    if (quote) {
+      if (character === '\\') index += 1
+      else if (character === quote) quote = undefined
+      continue
+    }
+    if (character === "'" || character === '"' || character === '`') {
+      quote = character
+      continue
+    }
+    const opening = '([{<'.indexOf(character)
+    if (opening !== -1) {
+      closings.push(')]}>'[opening]!)
+    } else if (character === closings.at(-1) && !(character === '>' && value[index - 1] === '=')) {
+      closings.pop()
+    } else if (character === '|' && closings.length === 0) {
+      parts.push(value.slice(start, index))
+      start = index + 1
+    }
+  }
+  parts.push(value.slice(start))
+  return parts
+}
+
+function combineMetadataTypes(
+  alternatives: Array<PropTypeDescriptor[] | undefined>
+): PropTypeDescriptor[] | undefined {
+  const types: PropTypeDescriptor[] = []
+  let unavailable = false
+  for (const alternative of alternatives) {
+    if (alternative === undefined) unavailable = true
+    else types.push(...alternative)
+  }
+  // An opaque branch cannot narrow its peers, but an explicit top type accepts all.
+  if (unavailable && !types.some((type) => type.kind === 'any' || type.kind === 'unknown')) {
+    return undefined
+  }
+  return uniquePropTypes(types)
 }
 
 function uniquePropTypes(types: PropTypeDescriptor[]): PropTypeDescriptor[] {
   const seen = new Set<string>()
   const unique: PropTypeDescriptor[] = []
   for (const type of types) {
-    const key = type.kind === 'literal' ? `literal:${String(type.value)}` : type.kind
+    const key = type.kind === 'literal' ? `literal:${typeof type.value}:${String(type.value)}` : type.kind
     if (seen.has(key)) {
       continue
     }
@@ -600,12 +648,12 @@ function mergeMetadataPropContracts(first: PropContract, second: PropContract): 
     : first.required === false || second.required === false
       ? false
       : first.required ?? second.required
-  const types = uniquePropTypes([...(first.types ?? []), ...(second.types ?? [])])
+  const types = combineMetadataTypes([first.types, second.types])
   const merged: PropContract = { name: first.name || second.name }
   if (required !== undefined) {
     merged.required = required
   }
-  if (types.length > 0) {
+  if (types?.length) {
     merged.types = types
   }
   return merged

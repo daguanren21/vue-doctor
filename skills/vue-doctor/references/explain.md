@@ -62,7 +62,7 @@ Config files (first match wins):
 ```
 
 ```ts
-import { defineDoctorConfig } from 'vue-doctor'
+import { defineDoctorConfig } from '@daguanren21/vue-doctor'
 
 export default defineDoctorConfig({
   rules: {

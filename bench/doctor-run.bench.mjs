@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { Bench } from 'tinybench'
-import { runDoctor } from '../packages/runner/dist/index.mjs'
+import { runDoctor } from '../packages/vue-doctor/dist/index.mjs'
 
 const fileCount = Number(process.env.VUE_DOCTOR_BENCH_FILES ?? '250')
 if (!Number.isInteger(fileCount) || fileCount < 1) {

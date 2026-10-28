@@ -594,7 +594,9 @@ export const LocalHelperEngine = defineComponent({
 
   test.each([
     'Base.methods.save = replacement',
-    'mutate(Base)'
+    'mutate(Base)',
+    'mutate`${Base}`;',
+    'Base.mutate`text`;'
   ])('does not trust inherited options after a mutation or escape: %s', async mutation => {
     const evidence = await fixture({
       'index.mjs': 'export {}',
@@ -619,6 +621,24 @@ export const LocalHelperEngine = defineComponent({
     })
     const result = await readRuntimeFallthrough(evidence)
     expect([...result.events.get('Child')!.keys()].sort()).toEqual(['current', 'live'])
+  })
+
+  test('inherits effective SFC props without restoring replaced ordinary options', async () => {
+    const evidence = await fixture({
+      'index.mjs': 'export {}',
+      'Base.vue': `<script lang="ts">export default {
+        props: { mode: Number, obsolete: Boolean }
+      }</script><script setup lang="ts">defineProps<{ mode: 'ready' | 'busy' }>()</script>`,
+      'Child.ts': `import Base from './Base.vue'; export default {
+        name: 'Child', extends: Base, props: { own: Boolean }
+      }`
+    })
+    const result = await readRuntimeFallthrough(evidence)
+    const props = result.props.get('Child')!
+    expect([...props.keys()].sort()).toEqual(['mode', 'own'])
+    expect(props.get('mode')).toEqual({
+      name: 'mode', required: true, types: [{ kind: 'string' }]
+    })
   })
 
   test('does not execute published props while collecting interaction evidence', async () => {
@@ -718,6 +738,13 @@ export default {
       'private.vue': `<script>export default { name: 'Private', props: ['hidden'] }</script><template><div /></template>`
     })
     expect((await publicContracts(evidence)).components.size).toBe(0)
+  })
+
+  test.each(['mutate`${Choice}`;', 'Choice.mutate`text`;'])('rejects options escaped through tagged calls: %s', async escape => {
+    const evidence = await fixture({
+      'index.mjs': `export const Choice = { props: ['obsolete'], render() {} }; ${escape}`
+    })
+    expect((await publicContracts(evidence)).components.has('Choice')).toBe(false)
   })
 
   test('keeps dynamic inheritance unknown while preserving effective own literal declarations', async () => {

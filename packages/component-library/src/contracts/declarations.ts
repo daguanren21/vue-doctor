@@ -5,20 +5,21 @@ import {
   SignatureKind,
   SymbolFlags,
   TypeFlags
-} from 'typescript/unstable/sync'
+} from 'typescript-native/unstable/sync'
 import type {
   Checker,
   Project,
   Symbol as TypeScriptSymbol,
   Type,
   TypeReference
-} from 'typescript/unstable/sync'
+} from 'typescript-native/unstable/sync'
 import type {
   CallSignatureDeclaration,
   NamedTupleMember,
   Node,
   TupleTypeNode
-} from 'typescript/unstable/ast'
+} from 'typescript-native/unstable/ast'
+import { SyntaxKind } from 'typescript-native/unstable/ast'
 import { resolve } from 'node:path'
 import type { ComponentLibraryEvidence } from '../types.js'
 import type {
@@ -83,6 +84,7 @@ export async function readTypeScriptContractsWithCacheInputs(
     }
   })
   let snapshot: ReturnType<API['updateSnapshot']> | undefined
+  const identities = new Map<number, { names: Set<string>; contracts: ComponentContract[] }>()
 
   try {
     snapshot = api.updateSnapshot({ openFiles: entries.map((entry) => entry.path) })
@@ -102,29 +104,36 @@ export async function readTypeScriptContractsWithCacheInputs(
       const provenance = sources[index]!
 
       for (const exported of moduleSymbol ? checker.getExportsOfModule(moduleSymbol) : []) {
-        const symbol = exported.flags & SymbolFlags.Alias
-          ? checker.getAliasedSymbol(exported)
-          : exported
+        const symbol = exported.flags & SymbolFlags.Alias ? checker.getAliasedSymbol(exported) : exported
         const location = getSymbolLocation(symbol, project, sourceFile)
         const type = checker.getTypeOfSymbolAtLocation(symbol, location)
         const instance = getComponentInstanceType(checker, type)
 
-        if (!instance || components.has(exported.name)) {
+        if (!instance) {
           continue
         }
 
-        components.set(
+        let group = identities.get(symbol.id)
+        if (!group) {
+          const publicName = getPublicSymbolName(checker, project, symbol)
+          group = { names: new Set(publicName ? [publicName] : []), contracts: [] }
+          identities.set(symbol.id, group)
+        }
+        group.names.add(exported.name)
+        if (components.has(exported.name)) {
+          continue
+        }
+
+        const contract = createContractFromInstance(
+          checker,
+          project,
           exported.name,
-          createContractFromInstance(
-            checker,
-            project,
-            exported.name,
-            symbol.name,
-            instance,
-            location,
-            provenance
-          )
+          instance,
+          location,
+          provenance
         )
+        components.set(exported.name, contract)
+        group.contracts.push(contract)
       }
     }
   } finally {
@@ -132,6 +141,22 @@ export async function readTypeScriptContractsWithCacheInputs(
       snapshot?.dispose()
     } finally {
       api.close()
+    }
+  }
+
+  const nameIdentities = new Map<string, number | null>()
+  for (const [identity, group] of identities) {
+    for (const name of group.names) {
+      const owner = nameIdentities.get(name)
+      nameIdentities.set(name, owner === undefined || owner === identity ? identity : null)
+    }
+  }
+  for (const [identity, group] of identities) {
+    const names = [...group.names]
+      .filter((name) => nameIdentities.get(name) === identity)
+      .sort((left, right) => left.localeCompare(right))
+    for (const contract of group.contracts) {
+      contract.aliases = names.filter((name) => name !== contract.name)
     }
   }
 
@@ -216,6 +241,20 @@ function toTypeScriptProvenance(entry: { path: string; relativePath: string }): 
   }
 }
 
+function getPublicSymbolName(
+  checker: Checker,
+  project: Project,
+  symbol: TypeScriptSymbol
+): string | undefined {
+  if (symbol.name === 'default') return undefined
+  const declaration = symbol.valueDeclaration ?? symbol.declarations[0]
+  const sourceFile = declaration && project.program.getSourceFile(declaration.path)
+  const moduleSymbol = sourceFile && checker.getSymbolAtLocation(sourceFile)
+  const exported = moduleSymbol && checker.getMemberInModuleExports(moduleSymbol, symbol.name)
+  const target = exported && (exported.flags & SymbolFlags.Alias ? checker.getAliasedSymbol(exported) : exported)
+  return target?.id === symbol.id ? symbol.name : undefined
+}
+
 function getComponentInstanceType(
   checker: Checker,
   type: Type,
@@ -269,7 +308,6 @@ function createContractFromInstance(
   checker: Checker,
   project: Project,
   exportedName: string,
-  symbolName: string,
   instance: Type,
   location: Node,
   provenance: ContractProvenance
@@ -409,7 +447,7 @@ function createContractFromInstance(
 
   return {
     name: exportedName,
-    aliases: symbolName === exportedName ? [] : [symbolName],
+    aliases: [],
     props: propsSymbol
       ? createDimension(propIssues.length > 0 ? 'partial' : 'known', propsAcceptance, props, propIssues)
       : createUnknownDimension(),
@@ -439,36 +477,20 @@ function createEventSignature(
   const last = payload.at(-1)
   if (last && signature.hasRestParameter) {
     const fixedPayload = payload.slice(0, -1).map(toEventParameter)
-    const declaration = signature.declaration?.resolve(project) as CallSignatureDeclaration | undefined
-    const restNode = declaration?.parameters.at(-1)
-    const tupleNode = restNode?.type as TupleTypeNode | undefined
-    if (tupleNode?.elements) {
-      const tupleParameters: EventParameter[] = tupleNode.elements.map((element) => {
-        const named = element as NamedTupleMember
+    const lastType = checker.getTypeOfSymbolAtLocation(last, getSymbolLocation(last, project, location))
+    const tupleType = lastType.isTypeReference() ? lastType.getTarget() : lastType
+    if (tupleType.isTupleType()) {
+      const declaration = signature.declaration?.resolve(project) as CallSignatureDeclaration | undefined
+      const restTypeNode = declaration?.parameters.at(-1)?.type
+      const elements = restTypeNode?.kind === SyntaxKind.TupleType ? (restTypeNode as TupleTypeNode).elements : undefined
+      const tupleParameters = tupleType.elementFlags.map((flags, index) => {
+        const element = elements?.[index]
         return {
-          name: 'name' in named && named.name && 'text' in named.name ? named.name.text : undefined,
-          optional: 'questionToken' in named && Boolean(named.questionToken),
-          rest: 'dotDotDotToken' in named && Boolean(named.dotDotDotToken)
+          name: element?.kind === SyntaxKind.NamedTupleMember ? (element as NamedTupleMember).name.text : undefined,
+          optional: Boolean(flags & ElementFlags.Optional),
+          rest: Boolean(flags & (ElementFlags.Rest | ElementFlags.Variadic))
         }
       })
-      return {
-        parameters: [...fixedPayload, ...tupleParameters],
-        minArity: fixedPayload.filter((parameter) => !parameter.optional).length
-          + tupleParameters.filter((parameter) => !parameter.optional && !parameter.rest).length,
-        maxArity: tupleParameters.some((parameter) => parameter.rest)
-          ? null
-          : fixedPayload.length + tupleParameters.length
-      }
-    }
-
-    const lastType = checker.getTypeOfSymbolAtLocation(last, getSymbolLocation(last, project, location))
-    if (lastType.isTupleType()) {
-      const tupleArguments = checker.getTypeArguments(lastType)
-      const tupleParameters = tupleArguments.map((type, index) => ({
-        name: undefined,
-        optional: Boolean(lastType.elementFlags[index]! & ElementFlags.Optional),
-        rest: Boolean(lastType.elementFlags[index]! & (ElementFlags.Rest | ElementFlags.Variadic))
-      }))
       return {
         parameters: [...fixedPayload, ...tupleParameters],
         minArity: fixedPayload.filter((parameter) => !parameter.optional).length
@@ -665,7 +687,7 @@ function describePropTypes(checker: Checker, type: Type): PropTypeDescriptor[] {
 
   const add = (descriptor: PropTypeDescriptor) => {
     const key = descriptor.kind === 'literal'
-      ? `literal:${String(descriptor.value)}`
+      ? `literal:${typeof descriptor.value}:${String(descriptor.value)}`
       : descriptor.kind
     if (seen.has(key)) {
       return
@@ -687,14 +709,14 @@ function describePropTypes(checker: Checker, type: Type): PropTypeDescriptor[] {
   }
 
   return descriptors.sort((left, right) => {
-    const leftKey = left.kind === 'literal' ? `literal:${String(left.value)}` : left.kind
-    const rightKey = right.kind === 'literal' ? `literal:${String(right.value)}` : right.kind
+    const leftKey = left.kind === 'literal' ? `literal:${typeof left.value}:${String(left.value)}` : left.kind
+    const rightKey = right.kind === 'literal' ? `literal:${typeof right.value}:${String(right.value)}` : right.kind
     return leftKey.localeCompare(rightKey)
   })
 }
 
 function isArrayLikeType(checker: Checker, type: Type): boolean {
-  if (checker.isArrayType(type)) {
+  if (checker.isArrayType(type) || checker.isTupleType(type)) {
     return true
   }
 

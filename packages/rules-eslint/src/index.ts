@@ -1,11 +1,11 @@
 import { existsSync, realpathSync } from 'node:fs'
 import path from 'node:path'
-import { Linter, type Rule } from 'eslint'
-import * as typescriptParser from '@typescript-eslint/parser'
-import * as vueParser from 'vue-eslint-parser'
-import type { Diagnostic, DoctorRuleCheck, DoctorRulePackContext, DoctorRulePackResult } from '@vue-doctor/core'
-import type { SourceDocument, SourceDocumentBlock } from '@vue-doctor/source'
-import { defineRuleEngine, engineRule, type EngineRuleCheck, type RuleEngine, type RuleEngineEntry } from '@vue-doctor/rules'
+import type { Linter, Rule } from 'eslint'
+import type * as TypeScriptParser from '@typescript-eslint/parser'
+import type * as VueParser from 'vue-eslint-parser'
+import type { Diagnostic, DoctorRuleCheck, DoctorRulePackContext, DoctorRulePackResult } from '@daguanren21/vue-doctor-core'
+import type { SourceDocument, SourceDocumentBlock } from '@daguanren21/vue-doctor-source'
+import { defineRuleEngine, engineRule, type EngineRuleCheck, type RuleEngine, type RuleEngineEntry } from '@daguanren21/vue-doctor-rules'
 
 const extensions = ['.vue', '.js', '.jsx', '.mjs', '.cjs', '.ts', '.tsx', '.mts', '.cts'] as const
 const scriptLanguages = new Set(['js', 'javascript', 'jsx', 'ts', 'typescript', 'tsx'])
@@ -87,9 +87,11 @@ export function createEslintRuleEngine<Services = undefined>(options: EslintEngi
       if (!documents.length) { result.checks = [...states.values()]; return result }
       const suppliedRoot = path.resolve(context.inventory.root)
       const root = existsSync(suppliedRoot) ? realpathSync(suppliedRoot) : suppliedRoot
-      const linter = new Linter({ cwd: root, configType: 'flat' })
+      let linter: Linter | undefined
+      let typescriptParser: typeof TypeScriptParser | undefined
+      let vueParser: typeof VueParser | undefined
       // Touch the process-global project service only if this run enters a typed pass.
-      let typedServiceUsed = false
+      let clearTypedCaches: (() => void) | undefined
       let services!: Services
       let prepared = false
       try {
@@ -147,9 +149,16 @@ export function createEslintRuleEngine<Services = undefined>(options: EslintEngi
               for (const entry of batch) unavailable(entry, document.file, 'No consumer tsconfig.json or jsconfig.json is available for a real type program.')
               continue
             }
-            if (typed && !typedServiceUsed) {
+            // Runtime-selected backends must not initialize for inactive or prerequisite-only batches.
+            if (!linter) {
+              const { Linter } = await import('eslint')
+              linter = new Linter({ cwd: root, configType: 'flat' })
+            }
+            typescriptParser ??= await import('@typescript-eslint/parser')
+            if (sfc) vueParser ??= await import('vue-eslint-parser')
+            if (typed && !clearTypedCaches) {
               typescriptParser.clearCaches()
-              typedServiceUsed = true
+              clearTypedCaches = typescriptParser.clearCaches
             }
             const modules: Record<string, Rule.RuleModule> = {}
             const rules: NonNullable<Linter.Config['rules']> = {}
@@ -226,7 +235,7 @@ export function createEslintRuleEngine<Services = undefined>(options: EslintEngi
         }
       } finally {
         try { if (prepared) await options.dispose?.(services) }
-        finally { if (typedServiceUsed) typescriptParser.clearCaches() }
+        finally { clearTypedCaches?.() }
       }
       result.checks = [...states.values()]
       return result

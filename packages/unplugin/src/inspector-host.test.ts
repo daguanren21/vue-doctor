@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events'
 import { expect, test, vi } from 'vitest'
-import type { DoctorReport } from '@vue-doctor/core'
+import type { DoctorReport } from '@daguanren21/vue-doctor-core'
 
 const host = vi.hoisted(() => {
   const backend = {
@@ -15,7 +15,7 @@ const host = vi.hoisted(() => {
     createHost: vi.fn(async () => ({ ...backend, hub: { close: vi.fn(async () => {}) }, closeTransport: vi.fn(async () => {}), nodeMiddleware: vi.fn() }))
   }
 })
-vi.mock('@vue-doctor/inspector/host', () => ({
+vi.mock('@daguanren21/vue-doctor-inspector/host', () => ({
   createInspectorBackend: host.createBackend,
   createInspectorHost: host.createHost
 }))

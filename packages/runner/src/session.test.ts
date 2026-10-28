@@ -1,4 +1,4 @@
-import type { DoctorReport } from '@vue-doctor/core'
+import type { DoctorReport } from '@daguanren21/vue-doctor-core'
 import { describe, expect, test, vi } from 'vitest'
 import { createDoctorAnalysisSession } from './session.js'
 

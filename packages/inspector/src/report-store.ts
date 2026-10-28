@@ -7,8 +7,8 @@ import type {
   DoctorRuleCheck,
   DoctorRuleDefinition,
   DoctorSuppressionAudit
-} from '@vue-doctor/core'
-import { isSupportedDoctorReport } from '@vue-doctor/core'
+} from '@daguanren21/vue-doctor-core'
+import { isSupportedDoctorReport } from '@daguanren21/vue-doctor-core'
 import { resolveSourceFileWithinRoot } from './editor.js'
 import {
   assertExportReportRequest,
@@ -660,8 +660,14 @@ function diffSamples(records: readonly FindingRecord[]): InspectorScanDiffFindin
 function createSnapshot(report: DoctorReport, createdAt: Date): SnapshotData {
   if (!isSupportedDoctorReport(report)) throw new InspectorProtocolError('invalid-request', 'The Inspector received an unsupported Doctor report.')
   const immutable = deepFreeze(structuredClone(report)) as Readonly<DoctorReport>
-  const id = snapshotId(immutable)
-  const findings = deepFreeze(createFindings(immutable))
+  // Hash anonymous findings while visiting the report so their canonical
+  // content is serialized only once. This map lives only for this construction.
+  const diagnosticHashes = new Map<object, string | undefined>()
+  for (const diagnostic of immutable.diagnostics) {
+    if (diagnostic.id === undefined || diagnostic.id === null) diagnosticHashes.set(diagnostic, undefined)
+  }
+  const id = snapshotId(immutable, diagnosticHashes)
+  const findings = deepFreeze(createFindings(immutable, diagnosticHashes))
   return {
     id,
     createdAt: createdAt.toISOString(),
@@ -725,10 +731,10 @@ function indexedUnion<T extends string>(index: Map<string, number[]>, values: Se
   return [...merged].sort((left, right) => left - right)
 }
 
-function createFindings(report: Readonly<DoctorReport>): FindingRecord[] {
+function createFindings(report: Readonly<DoctorReport>, diagnosticHashes: ReadonlyMap<object, string | undefined>): FindingRecord[] {
   const occurrences = new Map<string, number>()
   return report.diagnostics.map((diagnostic) => {
-    const baseId = diagnostic.id ?? `legacy:${shortHash(diagnostic)}`
+    const baseId = diagnostic.id ?? `legacy:${diagnosticHashes.get(diagnostic)!}`
     const occurrence = (occurrences.get(baseId) ?? 0) + 1
     occurrences.set(baseId, occurrence)
     const id = occurrence === 1 ? baseId : `${baseId}#${occurrence}`
@@ -958,39 +964,52 @@ function languageForFile(file: string): string {
   return extension || 'text'
 }
 
-function snapshotId(report: Readonly<DoctorReport>): string {
-  return `vds1:${shortHash(report)}`
+function snapshotId(report: Readonly<DoctorReport>, diagnosticHashes: Map<object, string | undefined>): string {
+  return `vds1:${shortHash(report, diagnosticHashes)}`
 }
 
 function coverageId(category: InspectorCoverageCategory, value: unknown): string {
   return `coverage:${category}:${shortHash(value)}`
 }
 
-function shortHash(value: unknown): string {
+function shortHash(value: unknown, diagnosticHashes?: Map<object, string | undefined>): string {
   const hash = createHash('sha256')
-  updateCanonicalHash(hash, value)
+  updateCanonicalHash(chunk => { hash.update(chunk) }, value, diagnosticHashes)
   return hash.digest('hex').slice(0, 32)
 }
 
-function updateCanonicalHash(hash: ReturnType<typeof createHash>, value: unknown): void {
-  if (value === null) return void hash.update('null;')
-  if (value === undefined) return void hash.update('undefined;')
-  if (typeof value === 'string') return void hash.update(`string:${JSON.stringify(value)};`)
-  if (typeof value === 'number') return void hash.update(`number:${JSON.stringify(value)};`)
-  if (typeof value === 'boolean') return void hash.update(`boolean:${value};`)
+function updateCanonicalHash(
+  write: (chunk: string) => void,
+  value: unknown,
+  diagnosticHashes?: Map<object, string | undefined>
+): void {
+  if (value !== null && typeof value === 'object' && diagnosticHashes?.has(value) && diagnosticHashes.get(value) === undefined) {
+    const diagnosticHash = createHash('sha256')
+    updateCanonicalHash(chunk => {
+      write(chunk)
+      diagnosticHash.update(chunk)
+    }, value)
+    diagnosticHashes.set(value, diagnosticHash.digest('hex').slice(0, 32))
+    return
+  }
+  if (value === null) return void write('null;')
+  if (value === undefined) return void write('undefined;')
+  if (typeof value === 'string') return void write(`string:${JSON.stringify(value)};`)
+  if (typeof value === 'number') return void write(`number:${JSON.stringify(value)};`)
+  if (typeof value === 'boolean') return void write(`boolean:${value};`)
   if (Array.isArray(value)) {
-    hash.update('array[')
-    for (const item of value) updateCanonicalHash(hash, item)
-    hash.update('];')
+    write('array[')
+    for (const item of value) updateCanonicalHash(write, item, diagnosticHashes)
+    write('];')
     return
   }
   if (typeof value === 'object') {
-    hash.update('object{')
+    write('object{')
     for (const key of Object.keys(value).filter(key => (value as Record<string, unknown>)[key] !== undefined).sort(compareText)) {
-      hash.update(`${JSON.stringify(key)}:`)
-      updateCanonicalHash(hash, (value as Record<string, unknown>)[key])
+      write(`${JSON.stringify(key)}:`)
+      updateCanonicalHash(write, (value as Record<string, unknown>)[key], diagnosticHashes)
     }
-    hash.update('};')
+    write('};')
     return
   }
   throw new InspectorProtocolError('invalid-request', `Report contains a non-JSON value: ${typeof value}.`)

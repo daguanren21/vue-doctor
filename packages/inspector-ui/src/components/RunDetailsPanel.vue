@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import type { DoctorReport } from '@vue-doctor/core'
+import type { DoctorReport } from '@daguanren21/vue-doctor-core'
 import type { InspectorLocale, inspectorMessages } from '../i18n'
 import { formatLocation, relativePath } from '../lib/evidence'
 import { inspectorButton } from '../lib/variants'

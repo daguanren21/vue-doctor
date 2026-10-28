@@ -1,8 +1,12 @@
 {
-  "name": "@vue-doctor/runner",
-  "version": "0.0.0",
+  "name": "@daguanren21/vue-doctor-runner",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
   "type": "module",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "engines": {
     "node": ">=20.19.0"
   },
@@ -10,15 +14,19 @@
     ".": {
       "types": "./dist/index.d.mts",
       "import": "./dist/index.mjs"
+    },
+    "./source-worker": {
+      "types": "./dist/source-worker.d.mts",
+      "import": "./dist/source-worker.mjs"
     }
   },
   "dependencies": {
-    "@vue-doctor/component-library": "workspace:*",
-    "@vue-doctor/core": "workspace:*",
-    "@vue-doctor/rule-pack-component-library": "workspace:*",
-    "@vue-doctor/rule-pack-eslint": "workspace:*",
-    "@vue-doctor/rule-pack-vue": "workspace:*",
-    "@vue-doctor/source": "workspace:*",
+    "@daguanren21/vue-doctor-component-library": "workspace:*",
+    "@daguanren21/vue-doctor-core": "workspace:*",
+    "@daguanren21/vue-doctor-rule-pack-component-library": "workspace:*",
+    "@daguanren21/vue-doctor-rule-pack-eslint": "workspace:*",
+    "@daguanren21/vue-doctor-rule-pack-vue": "workspace:*",
+    "@daguanren21/vue-doctor-source": "workspace:*",
     "p-map": "7.0.6",
     "piscina": "5.3.0",
     "tinyglobby": "0.2.17"

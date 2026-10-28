@@ -1,9 +1,9 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { ComponentLibraryEvidence } from '@vue-doctor/component-library'
-import type { PackageResolution, ProjectContext } from '@vue-doctor/core'
-import type { VueComponentUsage, VueSourceUsageReport } from '@vue-doctor/source'
+import type { ComponentLibraryEvidence } from '@daguanren21/vue-doctor-component-library'
+import type { PackageResolution, ProjectContext } from '@daguanren21/vue-doctor-core'
+import type { VueComponentUsage, VueSourceUsageReport } from '@daguanren21/vue-doctor-source'
 import { afterEach, describe, expect, test } from 'vitest'
 import { analyzeComponentLibraries } from './analysis.js'
 

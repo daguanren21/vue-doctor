@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
-import { isSupportedDoctorReport } from '@vue-doctor/core'
-import type { Diagnostic, DoctorReport } from '@vue-doctor/core'
-import { extractDoctorSuppressions } from '@vue-doctor/source'
+import { isSupportedDoctorReport } from '@daguanren21/vue-doctor-core'
+import type { Diagnostic, DoctorReport } from '@daguanren21/vue-doctor-core'
+import { extractDoctorSuppressions } from '@daguanren21/vue-doctor-source'
 import { finalizeDoctorReport } from './report-contract.js'
 
 function diagnostic(overrides: Partial<Diagnostic> & Pick<Diagnostic, 'code' | 'message'>): Diagnostic {

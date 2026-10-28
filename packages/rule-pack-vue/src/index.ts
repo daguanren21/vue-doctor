@@ -3,8 +3,9 @@ import {
   resolveVueVersion,
   type Diagnostic,
   type ResolvedVueVersion
-} from '@vue-doctor/core'
-import type { ParsedVueSource } from '@vue-doctor/source'
+} from '@daguanren21/vue-doctor-core'
+import type { ParsedVueSource } from '@daguanren21/vue-doctor-source'
+import { isHTMLTag, isSVGTag } from '@vue/shared'
 import { getVueRuleDefinition, resolveVueRuleSeverity } from './rules.js'
 import {
   isUnshadowedGlobalCall,
@@ -140,7 +141,9 @@ type Node = {
   object?: Node
   operator?: string
   computed?: boolean
+  kind?: string
   async?: boolean
+  generator?: boolean
   filters?: Node[]
   expression?: Node
   range?: [number, number]
@@ -204,6 +207,8 @@ interface ReactiveBindingAnalysis {
   watchHandleNames: TrackedBindings
   appNames: TrackedBindings
   writeCounts: Map<Node, number>
+  reassignedNames: TrackedBindings
+  arraySources: Set<Node>
 }
 
 interface AppApiState {
@@ -286,6 +291,14 @@ function diagnoseTemplateNode(
 ): void {
   const attributes = node.startTag?.attributes ?? []
   const names = new Set(attributes.map(getDirectiveName).filter(Boolean))
+  const tag = node.rawName ?? node.name
+  const hasComponentIs = attributes.some((attribute) => (
+    attribute.directive
+      ? getDirectiveName(attribute) === 'bind' && getArgumentName(attribute) === 'is'
+      : attribute.key?.name === 'is'
+  ))
+  const nativeElement = Boolean(tag && (isHTMLTag(tag) || isSVGTag(tag)) && !hasComponentIs)
+  const transitionGroup = (tag === 'TransitionGroup' || tag === 'transition-group') && !hasComponentIs
 
   // Aligned with vite-doctor vue/security/restrict-v-html (error).
   if (names.has('html')) {
@@ -328,6 +341,32 @@ function diagnoseTemplateNode(
         attribute,
         'Provide a valid v-for expression such as "item in items".'
       ))
+    }
+    const expression = attribute.value?.expression
+    if (dir === 'memo' && (expression?.type === 'Literal' || expression?.type === 'ObjectExpression')) {
+      diagnostics.push(createDiagnostic(
+        'vue-memo-invalid-dependencies',
+        'v-memo requires a dependency array, not a literal scalar or object.',
+        file,
+        attribute,
+        'Pass a fixed-length array of dependencies, or [] to memoize without dependencies.'
+      ))
+    }
+    if (transitionGroup) {
+      const mode = !attribute.directive && attribute.key?.name === 'mode'
+        ? attribute.value?.value
+        : dir === 'bind' && getArgumentName(attribute) === 'mode'
+          ? literalString(expression ?? undefined)
+          : undefined
+      if (typeof mode === 'string' && mode.length > 0) {
+        diagnostics.push(createDiagnostic(
+          'vue-transition-group-mode',
+          'TransitionGroup mode does not control the order of list transitions.',
+          file,
+          attribute,
+          'Remove mode from TransitionGroup; use Transition when switching a single view in sequence.'
+        ))
+      }
     }
   }
 
@@ -401,6 +440,22 @@ function diagnoseTemplateNode(
   // Vue compiler deprecations / Vue 2 leftovers
   for (const attribute of attributes) {
     const mods = getModifiers(attribute)
+    if (
+      nativeElement
+      && getDirectiveName(attribute) === 'on'
+      && attribute.key?.argument
+      && !getArgumentName(attribute)?.toLowerCase().startsWith('vue:')
+      && mods.includes('passive')
+      && mods.includes('prevent')
+    ) {
+      diagnostics.push(createDiagnostic(
+        'vue-event-passive-prevent',
+        'A passive DOM listener cannot prevent the event default action.',
+        file,
+        attribute,
+        'Choose whether the listener needs passive handling or default prevention, and remove the conflicting modifier.'
+      ))
+    }
     if (getDirectiveName(attribute) === 'bind' && mods.includes('sync')) {
       const arg = getArgumentName(attribute) ?? 'value'
       diagnostics.push(createDiagnostic(
@@ -749,6 +804,7 @@ function diagnoseScriptProgram(
     diagnoseVersionedVueApi(node, file, diagnostics, vueVersion)
     diagnoseVue2ReactiveTarget(node, file, diagnostics, vueVersion)
     diagnoseVue2ReadonlyTarget(node, file, diagnostics, vueVersion)
+    diagnoseComputedGetter(node, file, diagnostics, refAnalysis)
     diagnoseComputedReadonlyWrite(
       node,
       file,
@@ -1893,6 +1949,197 @@ function diagnoseVue2ReadonlyTarget(
   ))
 }
 
+function diagnoseComputedGetter(
+  node: Node,
+  file: string,
+  diagnostics: Diagnostic[],
+  analysis: ReactiveBindingAnalysis
+): void {
+  if (!isVueCall(node, 'computed')) return
+  const getter = computedGetter(node.arguments?.[0])
+  if (!getter || getter.generator) return
+  if (getter.async) {
+    diagnostics.push(createDiagnostic(
+      'vue-computed-async-getter',
+      'An async computed getter returns a Promise instead of synchronously deriving its value.',
+      file,
+      getter,
+      'Keep the computed getter synchronous and manage asynchronous work in a watcher or an explicit action.'
+    ))
+  }
+  const body = getter.body
+  if (!body || Array.isArray(body) || !getter.range) return
+  const [getterStart, getterEnd] = getter.range
+  walkOutsideFunctions(body, (child) => {
+    // Instance field initializers and class methods do not execute when a class is declared.
+    if (child.type === 'ClassDeclaration' || child.type === 'ClassExpression') return false
+    const target = mutationTarget(child)
+    let declaration: Node | undefined
+    if (target) {
+      visitAssignmentTargets(target, (assigned) => {
+        const source = computedMutationSource(assigned, analysis)
+        if (
+          source?.range
+          && !analysis.reassignedNames.has(source)
+          && (source.range[0] < getterStart || source.range[1] > getterEnd)
+        ) {
+          declaration = source
+        }
+      })
+    } else if (child.type === 'CallExpression' && child.callee?.type === 'MemberExpression') {
+      const method = child.callee.computed
+        ? literalString(child.callee.property)
+        : child.callee.property?.name
+      if (method !== 'sort' && method !== 'reverse') return
+      const receiver = unwrapTypeOnlyExpression(child.callee.object)
+      if (receiver?.type === 'Identifier') {
+        declaration = analysis.reactiveNames.resolve(receiver)
+      } else if (
+        receiver?.type === 'MemberExpression'
+        && (receiver.computed ? literalString(receiver.property) : receiver.property?.name) === 'value'
+      ) {
+        declaration = analysis.names.resolve(unwrapTypeOnlyExpression(receiver.object))
+      }
+      if (!declaration || !analysis.arraySources.has(declaration)) return
+    }
+    if (
+      !declaration?.range
+      || analysis.reassignedNames.has(declaration)
+      || (declaration.range[0] >= getterStart && declaration.range[1] <= getterEnd)
+    ) {
+      return
+    }
+    diagnostics.push(createDiagnostic(
+      'vue-computed-source-mutation',
+      'This computed getter mutates external reactive state while deriving its value.',
+      file,
+      child,
+      'Move source-state changes to an action or watcher; copy source arrays before sorting or reversing them.'
+    ))
+  }, false)
+}
+
+function computedGetter(options: Node | undefined): Node | undefined {
+  options = unwrapTypeOnlyExpression(options)
+  if (!options) return undefined
+  if (options.type === 'ArrowFunctionExpression' || options.type === 'FunctionExpression') return options
+  if (options.type !== 'ObjectExpression') return undefined
+  const properties = options.properties ?? []
+  for (let index = properties.length - 1; index >= 0; index -= 1) {
+    const property = properties[index]
+    if (property?.type !== 'Property' || !isAstNode(property.key)) return undefined
+    const key = !property.computed && property.key.type === 'Identifier'
+      ? property.key.name
+      : literalString(property.key)
+    // A later spread or unknown computed key may replace an earlier get property.
+    if (key === undefined && property.key.type !== 'Literal') return undefined
+    if (key !== 'get') continue
+    const value = propertyValue(property)
+    return property.kind === 'init'
+      && (value?.type === 'ArrowFunctionExpression' || value?.type === 'FunctionExpression')
+      ? value
+      : undefined
+  }
+  return undefined
+}
+
+function unwrapTypeOnlyExpression(node: Node | undefined): Node | undefined {
+  while (
+    node?.type === 'TSAsExpression'
+    || node?.type === 'TSTypeAssertion'
+    || node?.type === 'TSNonNullExpression'
+    || node?.type === 'TSSatisfiesExpression'
+  ) {
+    node = node.expression
+  }
+  return node
+}
+
+function computedMutationSource(target: Node, analysis: ReactiveBindingAnalysis): Node | undefined {
+  let member = unwrapTypeOnlyExpression(target)
+  while (member?.type === 'MemberExpression') {
+    const object = unwrapTypeOnlyExpression(member.object)
+    if (object?.type === 'Identifier') {
+      const reactive = analysis.reactiveNames.resolve(object)
+      if (reactive) return reactive
+      const property = unwrapTypeOnlyExpression(member.property)
+      const key = member.computed ? literalString(property) : property?.name
+      return key === 'value' ? analysis.names.resolve(object) : undefined
+    }
+    if (!object) return undefined
+    member = object
+  }
+  return undefined
+}
+
+function invalidateComputedSource(target: Node, analysis: ReactiveBindingAnalysis): void {
+  if (target.type === 'Identifier') {
+    const declaration = analysis.names.resolve(target) ?? analysis.reactiveNames.resolve(target)
+    if (declaration && declaration !== target) analysis.reassignedNames.add(target)
+    return
+  }
+  if (target.type === 'MemberExpression') {
+    const property = unwrapTypeOnlyExpression(target.property)
+    const key = target.computed ? literalString(property) : property?.name
+    const unknownKey = target.computed && property?.type !== 'Literal'
+    const receiver = unwrapTypeOnlyExpression(target.object)
+    if (receiver?.type === 'Identifier') {
+      const ref = analysis.names.resolve(receiver)
+      if (ref && (unknownKey || key === 'value')) analysis.arraySources.delete(ref)
+      const reactive = analysis.reactiveNames.resolve(receiver)
+      if (reactive && (unknownKey || key === 'sort' || key === 'reverse')) analysis.arraySources.delete(reactive)
+      return
+    }
+    if (receiver?.type !== 'MemberExpression') return
+    const root = unwrapTypeOnlyExpression(receiver.object)
+    if (root?.type !== 'Identifier') return
+    const receiverProperty = unwrapTypeOnlyExpression(receiver.property)
+    const receiverKey = receiver.computed ? literalString(receiverProperty) : receiverProperty?.name
+    const unknownReceiver = receiver.computed && receiverProperty?.type !== 'Literal'
+    const ref = analysis.names.resolve(root)
+    if (ref && (unknownReceiver || receiverKey === 'value')
+      && (unknownReceiver || unknownKey || key === 'sort' || key === 'reverse')) {
+      analysis.arraySources.delete(ref)
+    }
+    if (unknownReceiver) {
+      const reactive = analysis.reactiveNames.resolve(root)
+      if (reactive) analysis.arraySources.delete(reactive)
+    }
+  }
+}
+
+function visitAssignmentTargets(target: Node, visit: (target: Node) => void): void {
+  if (target.type === 'Identifier' || target.type === 'MemberExpression') {
+    visit(target)
+    return
+  }
+  if (target.type === 'ObjectPattern') {
+    for (const property of target.properties ?? []) {
+      const value = property.type === 'RestElement' ? property.argument : propertyValue(property)
+      if (value) visitAssignmentTargets(value, visit)
+    }
+  } else if (target.type === 'ArrayPattern') {
+    for (const element of target.elements ?? []) {
+      if (element) visitAssignmentTargets(element, visit)
+    }
+  } else if (target.type === 'AssignmentPattern') {
+    if (target.left && !Array.isArray(target.left)) visitAssignmentTargets(target.left, visit)
+  } else if (target.type === 'RestElement') {
+    if (target.argument) visitAssignmentTargets(target.argument, visit)
+  } else if (target.type === 'VariableDeclaration') {
+    for (const declaration of target.declarations ?? []) {
+      if (declaration.id) visitAssignmentTargets(declaration.id, visit)
+    }
+  } else if (
+    target.type === 'TSAsExpression'
+    || target.type === 'TSTypeAssertion'
+    || target.type === 'TSNonNullExpression'
+    || target.type === 'TSSatisfiesExpression'
+  ) {
+    if (target.expression) visitAssignmentTargets(target.expression, visit)
+  }
+}
+
 function diagnoseComputedReadonlyWrite(
   node: Node,
   file: string,
@@ -2668,9 +2915,9 @@ function diagnoseSetupApiOutsideContext(
   })
 }
 
-function walkOutsideFunctions(node: Node, visit: (node: Node) => void, isRoot = true): void {
+function walkOutsideFunctions(node: Node, visit: (node: Node) => void | false, isRoot = true): void {
   if (!isRoot && isFunctionNode(node)) return
-  visit(node)
+  if (visit(node) === false) return
   for (const [key, value] of Object.entries(node)) {
     if (key === 'parent' || key === 'loc' || key === 'range') continue
     if (Array.isArray(value)) {
@@ -3212,8 +3459,23 @@ function findRefBindings(program: Node): ReactiveBindingAnalysis {
   const watchHandleNames = new TrackedBindings()
   const appNames = new TrackedBindings()
   const writeCounts = new Map<Node, number>()
+  const reassignedNames = new TrackedBindings()
+  const arraySources = new Set<Node>()
+  const sourceWrites: Node[] = []
   visitScript(program, (node) => {
+    const write = node.type === 'VariableDeclarator' && node.init
+      ? node.id
+      : node.type === 'ForOfStatement' || node.type === 'ForInStatement'
+        ? Array.isArray(node.left) ? undefined : node.left
+        : mutationTarget(node)
+    if (write) sourceWrites.push(write)
     if (node.type === 'VariableDeclarator' && node.id?.name) {
+      if (
+        (isVueCall(node.init, 'ref') || isVueCall(node.init, 'shallowRef') || isVueCall(node.init, 'reactive'))
+        && node.init?.arguments?.[0]?.type === 'ArrayExpression'
+      ) {
+        arraySources.add(node.id)
+      }
       if (isVueCall(node.init, 'ref') || isVueCall(node.init, 'shallowRef')) {
         names.add(node.id)
       }
@@ -3339,7 +3601,7 @@ function findRefBindings(program: Node): ReactiveBindingAnalysis {
       writeCounts.set(mutableDeclaration, (writeCounts.get(mutableDeclaration) ?? 0) + 1)
     }
   })
-  return {
+  const analysis: ReactiveBindingAnalysis = {
     names,
     shallowNames,
     reactiveNames,
@@ -3357,8 +3619,13 @@ function findRefBindings(program: Node): ReactiveBindingAnalysis {
     effectScopeNames,
     watchHandleNames,
     appNames,
-    writeCounts
+    writeCounts,
+    reassignedNames,
+    arraySources
   }
+  const invalidateSource = (target: Node): void => invalidateComputedSource(target, analysis)
+  for (const target of sourceWrites) visitAssignmentTargets(target, invalidateSource)
+  return analysis
 }
 
 function findDestructuredDefineProps(program: Node): TrackedBindings {

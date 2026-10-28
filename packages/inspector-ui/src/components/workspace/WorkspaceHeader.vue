@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Icon } from '@iconify/vue'
-import type { InspectorSnapshot } from '@vue-doctor/inspector-protocol'
+import type { InspectorSnapshot } from '@daguanren21/vue-doctor-inspector-protocol'
 import type { InspectorMessages, InspectorLocale } from '../../i18n'
 import type { InspectorTheme } from '../../composables/useInspectorTheme'
 import { inspectorIcons } from '../../lib/icons'

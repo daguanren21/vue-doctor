@@ -1,7 +1,7 @@
-import { componentLibraryRuleDefinitions } from '@vue-doctor/rule-pack-component-library/rules'
-import { vueRuleDefinitions } from '@vue-doctor/rule-pack-vue/rules'
-import { eslintRulePack } from '@vue-doctor/rule-pack-eslint'
-import type { DoctorRulePack, DoctorRuleCatalog } from '@vue-doctor/core'
+import { componentLibraryRuleDefinitions } from '@daguanren21/vue-doctor-rule-pack-component-library/rules'
+import { vueRuleDefinitions } from '@daguanren21/vue-doctor-rule-pack-vue/rules'
+import { eslintRulePack } from '@daguanren21/vue-doctor-rule-pack-eslint'
+import type { DoctorRulePack, DoctorRuleCatalog } from '@daguanren21/vue-doctor-core'
 
 /** Built-in diagnostics and executors. Inspector UI is separate. */
 export function createBuiltinRuleComposition(): { catalogs: DoctorRuleCatalog[]; packs: DoctorRulePack[] } {

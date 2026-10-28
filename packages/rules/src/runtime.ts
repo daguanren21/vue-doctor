@@ -8,8 +8,8 @@ import {
   type DoctorRulePackResult,
   type EvidenceLocation,
   type SkippedCheckReason
-} from '@vue-doctor/core'
-import type { SourceDocument, SourceDocumentBlock } from '@vue-doctor/source'
+} from '@daguanren21/vue-doctor-core'
+import type { SourceDocument, SourceDocumentBlock } from '@daguanren21/vue-doctor-source'
 import type { File as BabelFile, Node as BabelNode } from '@babel/types'
 import type { ParserOptions as BabelParserOptions } from '@babel/parser'
 import type { Node as OxcNode, ParserOptions as OxcParserOptions, Program as OxcProgram } from 'oxc-parser'

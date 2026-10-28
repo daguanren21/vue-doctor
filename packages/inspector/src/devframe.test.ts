@@ -1,4 +1,4 @@
-import type { DoctorReport } from '@vue-doctor/core'
+import type { DoctorReport } from '@daguanren21/vue-doctor-core'
 import type { DevframeNodeContext } from 'devframe'
 import type { RpcFunctionDefinitionAnyWithContext } from 'devframe/rpc'
 import { describe, expect, test } from 'vitest'
@@ -19,7 +19,6 @@ describe('Vue Doctor Devframe', () => {
     expect(definition).toMatchObject({
       id: 'vue-doctor',
       name: 'Vue Doctor',
-      packageName: '@vue-doctor/inspector',
       clientAssets: '/fixture/inspector-ui',
       capabilities: { dev: true, build: false }
     })

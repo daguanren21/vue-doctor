@@ -1,13 +1,18 @@
-import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { serialize } from 'node:v8'
+import { createVueDoctorCacheKey, writeVueDoctorCache } from '@daguanren21/vue-doctor-core'
+import { version as typeScriptVersion } from 'typescript-native'
 import { afterEach, describe, expect, test } from 'vitest'
 import { createComponentLibraryEvidence } from '../evidence.js'
 import type {
   ComponentContract,
   ComponentContractMap,
   ContractDimension,
-  ContractProvenance
+  ContractProvenance,
+  PropContract,
+  PropTypeDescriptor
 } from './types.js'
 import {
   extractComponentLibraryContracts,
@@ -228,6 +233,397 @@ export declare const ExampleButton: {
     ])
   })
 
+  test.each(['_default', 'Component'])('keeps default-export declarations independent despite shared local name %s', async (localName) => {
+    const evidence = await createFixture({
+      'index.d.ts': `
+export { default as Alpha, default as AlphaAlias } from './alpha'
+export { default as Beta, default as BetaAlias } from './beta'
+`,
+      'alpha.d.ts': `declare const ${localName}: { new (): { $props: { alpha: string } } }; export default ${localName}`,
+      'beta.d.ts': `declare const ${localName}: { new (): { $props: { beta: number } } }; export default ${localName}`
+    }, { types: './index.d.ts' })
+
+    const result = await extractComponentLibraryContracts({ ...evidence, runtime: false })
+    const alpha = result.components.get('Alpha')!
+    const beta = result.components.get('Beta')!
+
+    expect(result.problems).toEqual([])
+    expect(alpha).not.toBe(beta)
+    expect(result.components.get('AlphaAlias')).toBe(alpha)
+    expect(result.components.get('BetaAlias')).toBe(beta)
+    expect([...alpha.props.entries.values()]).toEqual([
+      { name: 'alpha', required: true, types: [{ kind: 'string' }] }
+    ])
+    expect([...beta.props.entries.values()]).toEqual([
+      { name: 'beta', required: true, types: [{ kind: 'number' }] }
+    ])
+    expect(result.components.has(localName)).toBe(false)
+  })
+
+  test('keeps same-named declaration exports from separate modules independent', async () => {
+    const evidence = await createFixture({
+      'index.d.ts': `
+export { Shared as Alpha } from './alpha'
+export { Shared as Beta } from './beta'
+`,
+      'alpha.d.ts': 'export declare class Shared { $props: { alpha: string } }',
+      'beta.d.ts': 'export declare class Shared { $props: { beta: number } }'
+    }, { types: './index.d.ts' })
+
+    const result = await extractComponentLibraryContracts({ ...evidence, runtime: false })
+
+    expect(result.components.get('Alpha')).not.toBe(result.components.get('Beta'))
+    expect([...result.components.get('Alpha')!.props.entries.keys()]).toEqual(['alpha'])
+    expect([...result.components.get('Beta')!.props.entries.keys()]).toEqual(['beta'])
+    expect(result.components.has('Shared')).toBe(false)
+  })
+
+  test('does not equate a source-local declaration name with another public export', async () => {
+    const evidence = await createFixture({
+      'index.d.ts': `
+export { default as Alpha } from './alpha'
+export declare class Beta { $props: { beta: number } }
+`,
+      'alpha.d.ts': 'declare class Beta { $props: { alpha: string } }; export default Beta'
+    }, { types: './index.d.ts' })
+
+    const result = await extractComponentLibraryContracts({ ...evidence, runtime: false })
+
+    expect(result.components.get('Alpha')).not.toBe(result.components.get('Beta'))
+    expect([...result.components.get('Alpha')!.props.entries.keys()]).toEqual(['alpha'])
+    expect([...result.components.get('Beta')!.props.entries.keys()]).toEqual(['beta'])
+  })
+
+  test('resolves public aliases across declaration entrypoints by symbol identity', async () => {
+    const evidence = await createFixture({
+      'index.d.ts': "export { Button as Primary } from './button'",
+      'secondary.d.ts': "export { Button as Secondary } from './button'",
+      'button.d.ts': 'export declare class Button { $props: { label: string } }'
+    }, {
+      exports: {
+        '.': { types: './index.d.ts' },
+        './secondary': { types: './secondary.d.ts' }
+      }
+    })
+
+    const result = await extractComponentLibraryContracts({ ...evidence, runtime: false })
+    const primary = result.components.get('Primary')!
+
+    expect(result.problems).toEqual([])
+    expect(result.components.get('Secondary')).toBe(primary)
+    expect(result.components.get('Button')).toBe(primary)
+    expect([...primary.props.entries.values()]).toEqual([
+      { name: 'label', required: true, types: [{ kind: 'string' }] }
+    ])
+  })
+
+  test('preserves primitive identity and deterministic ordering in declaration literal unions', async () => {
+    const evidence = await createFixture({
+      'index.d.ts': `
+type Numeric = '1' | 1
+export declare class Choice {
+  $props: {
+    numeric: Numeric | '1' | 1
+    reversed: 1 | '1'
+    truth: 'true' | true
+    falsity: false | 'false'
+    ordinary: 'small' | 'large' | 'small'
+    enabled: true | false
+  }
+}
+`
+    }, { types: './index.d.ts' })
+
+    const result = await extractComponentLibraryContracts({ ...evidence, runtime: false })
+    const props = result.components.get('Choice')!.props.entries
+
+    expect(props.get('numeric')?.types).toEqual([
+      { kind: 'literal', value: 1 },
+      { kind: 'literal', value: '1' }
+    ])
+    expect(props.get('reversed')?.types).toEqual(props.get('numeric')?.types)
+    expect(props.get('truth')?.types).toEqual([
+      { kind: 'literal', value: true },
+      { kind: 'literal', value: 'true' }
+    ])
+    expect(props.get('falsity')?.types).toEqual([
+      { kind: 'literal', value: false },
+      { kind: 'literal', value: 'false' }
+    ])
+    expect(props.get('ordinary')?.types).toEqual([
+      { kind: 'literal', value: 'large' },
+      { kind: 'literal', value: 'small' }
+    ])
+    expect(props.get('enabled')?.types).toEqual([{ kind: 'boolean' }])
+  })
+
+  test('classifies mutable readonly and aliased tuple props as arrays', async () => {
+    const evidence = await createFixture({
+      'index.d.ts': `
+type Pair = readonly [label: string, count?: number]
+export declare class Tuples {
+  $props: {
+    mutable: [string, number]
+    readonly: readonly [string, number]
+    aliased: Pair
+    variadic: [string, ...number[]]
+    empty: readonly []
+    array: string[]
+    readonlyArray: ReadonlyArray<string>
+    object: { label: string }
+  }
+}
+`
+    }, { types: './index.d.ts' })
+
+    const result = await extractComponentLibraryContracts({ ...evidence, runtime: false })
+    const props = result.components.get('Tuples')!.props.entries
+
+    for (const name of ['mutable', 'readonly', 'aliased', 'variadic', 'empty', 'array', 'readonlyArray']) {
+      expect(props.get(name)?.types, name).toEqual([{ kind: 'array' }])
+    }
+    expect(props.get('object')?.types).toEqual([{ kind: 'object' }])
+  })
+
+  test('expands aliased event tuple rest payloads without losing optional or variadic arity', async () => {
+    const evidence = await createFixture({
+      'index.d.ts': `
+type Payload = [value: string, index?: number]
+type Repeated = [value: string, ...tail: number[]]
+export declare class Stream {
+  $emit: {
+    (event: 'change', prefix: string, ...args: Payload): void
+    (event: 'many', prefix: string, ...args: Repeated): void
+  }
+}
+`
+    }, { types: './index.d.ts' })
+
+    const result = await extractComponentLibraryContracts({ ...evidence, runtime: false })
+    const events = result.components.get('Stream')!.events.entries
+
+    expect(events.get('change')?.signatures).toEqual([{
+      parameters: [
+        { name: 'prefix', optional: false, rest: false },
+        { name: undefined, optional: false, rest: false },
+        { name: undefined, optional: true, rest: false }
+      ],
+      minArity: 2,
+      maxArity: 3
+    }])
+    expect(events.get('many')?.signatures).toEqual([{
+      parameters: [
+        { name: 'prefix', optional: false, rest: false },
+        { name: undefined, optional: false, rest: false },
+        { name: undefined, optional: false, rest: true }
+      ],
+      minArity: 2,
+      maxArity: null
+    }])
+  })
+
+
+  test('preserves mixed primitive literals in public script-setup contracts', async () => {
+    const evidence = await createFixture({
+      'index.mjs': "export { default as Choice } from './Choice.vue'",
+      'Choice.vue': `<script setup lang="ts">
+type Label = string
+defineProps<{
+  numeric: '1' | 1 | '1' | 1
+  truth: 'true' | true | 'true' | true
+  falsity: false | 'false'
+  pair: [string, number]
+  enabled: boolean
+  alias: Label
+  mixed: 1 | Label
+  unrestricted: any | Label
+}>()
+</script><template><div /></template>`
+    }, { main: './index.mjs' })
+
+    const result = await extractComponentLibraryContracts(evidence)
+    const props = result.components.get('Choice')!.props.entries
+
+    expect(result.problems).toEqual([])
+    expect(props.get('numeric')?.types).toEqual([
+      { kind: 'literal', value: '1' },
+      { kind: 'literal', value: 1 }
+    ])
+    expect(props.get('truth')?.types).toEqual([
+      { kind: 'literal', value: 'true' },
+      { kind: 'literal', value: true }
+    ])
+    expect(props.get('falsity')?.types).toEqual([
+      { kind: 'literal', value: false },
+      { kind: 'literal', value: 'false' }
+    ])
+    expect(props.get('pair')?.types).toEqual([{ kind: 'array' }])
+    expect(props.get('enabled')?.types).toEqual([{ kind: 'boolean' }])
+    expect(props.get('alias')?.types).toEqual([{ kind: 'string' }])
+    expect(props.get('mixed')?.types?.map(type => type.kind).sort()).toEqual(['number', 'string'])
+    expect(props.get('unrestricted')?.types).toEqual([{ kind: 'any' }])
+  })
+
+  test.each([
+    {
+      name: 'typed macro overrides the whole ordinary props option', lang: 'ts',
+      setup: "defineProps<{ mode: 'ready' | 'busy' }>()",
+      expected: [['mode', { name: 'mode', required: true, types: [
+        { kind: 'literal', value: 'busy' }, { kind: 'literal', value: 'ready' }
+      ] }]]
+    },
+    {
+      name: 'destructuring aliases are not public prop names', lang: 'ts',
+      setup: "const { mode: localMode } = defineProps<{ mode: 'ready' | 'busy' }>()",
+      expected: [['mode', { name: 'mode', required: true, types: [
+        { kind: 'literal', value: 'busy' }, { kind: 'literal', value: 'ready' }
+      ] }]]
+    },
+    {
+      name: 'JavaScript Object.assign output replaces ordinary props', lang: 'js',
+      setup: 'defineProps({ mode: { type: String, required: true } })',
+      expected: [['mode', { name: 'mode', required: true, types: [{ kind: 'string' }] }]]
+    },
+    {
+      name: 'an explicit empty runtime option removes ordinary props', lang: 'js',
+      setup: 'defineProps({})',
+      expected: []
+    },
+    {
+      name: 'an empty type generates no replacement option', lang: 'ts',
+      setup: 'defineProps<{}>()',
+      expected: [
+        ['mode', { name: 'mode', required: false, types: [{ kind: 'number' }] }],
+        ['obsolete', { name: 'obsolete', required: false, types: [{ kind: 'boolean' }] }]
+      ]
+    },
+    {
+      name: 'ordinary props remain when setup declares no props', lang: 'js',
+      setup: 'const value = 1',
+      expected: [
+        ['mode', { name: 'mode', required: false, types: [{ kind: 'number' }] }],
+        ['obsolete', { name: 'obsolete', required: false, types: [{ kind: 'boolean' }] }]
+      ]
+    },
+    {
+      name: 'compiler-supported decorators retain effective macro props', lang: 'ts',
+      setup: "function mark(value: any) { return value }\n@mark\nclass Local {}\ndefineProps<{ mode: 'ready' | 'busy' }>()",
+      expected: [['mode', { name: 'mode', required: true, types: [
+        { kind: 'literal', value: 'busy' }, { kind: 'literal', value: 'ready' }
+      ] }]]
+    },
+    {
+      name: 'unavailable macro compilation does not restore ordinary props', lang: 'ts',
+      setup: 'import type { Missing } from "./absent"; defineProps<Missing>()',
+      expected: []
+    }
+  ] satisfies Array<{ name: string; lang: string; setup: string; expected: Array<[string, PropContract]> }>)('preserves effective mixed-script contracts: $name', async ({ lang, setup, expected }) => {
+    const evidence = await createFixture({
+      'index.mjs': "export { default as Choice } from './Choice.vue'",
+      'Choice.vue': `<script lang="${lang}">
+export default { props: { mode: Number, obsolete: Boolean } }
+</script><script setup lang="${lang}">${setup}</script><template><div /></template>`
+    }, { main: './index.mjs' })
+    const result = await extractComponentLibraryContracts(evidence)
+    expect(result.problems).toEqual([])
+    expect(new Map(Array.from(result.components.get('Choice')!.props.entries, ([name, prop]) => (
+      [name, { ...prop, types: new Set(prop.types) }] as const
+    )))).toEqual(new Map(expected.map(([name, prop]) => (
+      [name, { ...prop, types: new Set<PropTypeDescriptor>(prop.types) }] as const
+    ))))
+  })
+
+  test('keeps runtime export identity through a logical package-root alias', async () => {
+    const evidence = await createFixture({
+      'index.mjs': "export { default as Choice } from './Choice.vue'",
+      'Choice.vue': '<script setup lang="ts">defineProps<{ value: number }>()</script><template><div /></template>'
+    }, { main: './index.mjs' })
+    const physicalRoot = await realpath(evidence.package.packageRoot!)
+    const aliasRoot = join(dirname(evidence.package.packageRoot!), 'ui-alias')
+    await symlink(physicalRoot, aliasRoot, 'junction')
+    const aliased = await createComponentLibraryEvidence({
+      package: {
+        ...evidence.package,
+        packageRoot: aliasRoot,
+        packageJsonPath: join(aliasRoot, 'package.json')
+      }
+    })
+    const expected = await extractComponentLibraryContracts({
+      ...evidence,
+      package: {
+        ...evidence.package,
+        packageRoot: physicalRoot,
+        packageJsonPath: join(physicalRoot, 'package.json')
+      }
+    })
+
+    const actual = await extractComponentLibraryContracts(aliased)
+
+    expect(actual).toEqual(expected)
+    expect(actual.components.get('Choice')?.props.entries.get('value')?.types).toEqual([{ kind: 'number' }])
+    expect(actual.sources.every(source => !source.relativePath.startsWith('..'))).toBe(true)
+  })
+
+  test('preserves mixed primitive literals across Web Types unions arrays and enums', async () => {
+    const evidence = await createFixture({
+      'web-types.json': JSON.stringify({
+        contributions: { html: { elements: [{
+          name: 'Choice',
+          attributes: [
+            { name: 'numeric', type: "'1' | 1 | '1' | 1" },
+            { name: 'truth', type: ["'true'", 'true', "'true'", 'true'] },
+            { name: 'falsity', value: { type: "'false' | false" } },
+            { name: 'enum', enum: ['1', 1, 'true', true, '1', 1] },
+            { name: 'values', values: [{ value: 'true' }, { value: true }, { name: 'true' }, true] },
+            { name: 'ordinary', type: 'string | string | number' }
+          ]
+        }] } }
+      })
+    }, { 'web-types': './web-types.json' })
+
+    const result = await extractComponentLibraryContracts({ ...evidence, runtime: false })
+    const props = result.components.get('Choice')!.props.entries
+
+    expect(props.get('numeric')?.types).toEqual([
+      { kind: 'literal', value: '1' }, { kind: 'literal', value: 1 }
+    ])
+    expect(props.get('truth')?.types).toEqual([
+      { kind: 'literal', value: 'true' }, { kind: 'literal', value: true }
+    ])
+    expect(props.get('falsity')?.types).toEqual([
+      { kind: 'literal', value: 'false' }, { kind: 'literal', value: false }
+    ])
+    expect(props.get('enum')?.types).toEqual([
+      { kind: 'literal', value: '1' }, { kind: 'literal', value: 1 },
+      { kind: 'literal', value: 'true' }, { kind: 'literal', value: true }
+    ])
+    expect(props.get('values')?.types).toEqual(props.get('truth')?.types)
+    expect(props.get('ordinary')?.types).toEqual([{ kind: 'string' }, { kind: 'number' }])
+  })
+
+  test('preserves mixed primitive literals across Vetur tag types and attribute options', async () => {
+    const evidence = await createFixture({
+      'tags.json': JSON.stringify({
+        Choice: { attributes: [{ name: 'tagValue', type: "'1' | 1 | '1'" }] }
+      }),
+      'attributes.json': JSON.stringify({
+        'Choice/value': { type: "'true' | true", options: ['true', true] },
+        'Choice/:value': { options: ['true', true, 'false', false] }
+      })
+    }, { vetur: { tags: './tags.json', attributes: './attributes.json' } })
+
+    const result = await extractComponentLibraryContracts({ ...evidence, runtime: false })
+    const props = result.components.get('Choice')!.props.entries
+
+    expect(props.get('tagValue')?.types).toEqual([
+      { kind: 'literal', value: '1' }, { kind: 'literal', value: 1 }
+    ])
+    expect(props.get('value')?.types).toEqual([
+      { kind: 'literal', value: 'true' }, { kind: 'literal', value: true },
+      { kind: 'literal', value: 'false' }, { kind: 'literal', value: false }
+    ])
+  })
+
   test('persists versioned metadata contracts across runs', async () => {
     const cacheDirectory = await mkdtemp(join(tmpdir(), 'vue-doctor-contract-cache-'))
     fixtureRoots.push(cacheDirectory)
@@ -256,6 +652,149 @@ export declare const ExampleButton: {
       first.components.get('ExampleButton')
     )
     expect(await readdir(join(cacheDirectory, 'contracts-v2'))).toHaveLength(1)
+  })
+
+  test('does not reuse contract facts stored under analyzer version 6', async () => {
+    const cacheDirectory = await mkdtemp(join(tmpdir(), 'vue-doctor-contract-cache-semantics-'))
+    fixtureRoots.push(cacheDirectory)
+    const evidence = await createFixture({
+      'web-types.json': JSON.stringify({
+        contributions: { html: { elements: [{
+          name: 'Choice',
+          attributes: [{ name: 'value', type: "'1' | 1" }]
+        }] } }
+      })
+    }, { 'web-types': './web-types.json' })
+    evidence.runtime = false
+    evidence.cache = true
+    evidence.cacheDirectory = cacheDirectory
+
+    const packageRoot = await realpath(evidence.package.packageRoot!)
+    const packageJson = await realpath(evidence.package.packageJsonPath!)
+    const legacyParts: Array<string | Uint8Array> = [
+      '6',
+      typeScriptVersion,
+      process.versions.v8.split('.')[0] ?? '',
+      `${packageRoot}\0${packageJson}`,
+      evidence.package.dependencyName,
+      evidence.package.canonicalName,
+      evidence.package.declaredVersion ?? '',
+      evidence.package.installedVersion!,
+      [...evidence.package.importRoots].sort().join('\0')
+    ]
+    for (const path of [evidence.package.packageJsonPath!, evidence.artifacts.webTypes!.path].sort((a, b) => a.localeCompare(b))) {
+      legacyParts.push(path, await readFile(path))
+    }
+    const legacyContracts = contractMap(contract('Choice', 'web-types', {
+      props: dimension('known', [['value', { name: 'value', types: [{ kind: 'literal', value: '1' }] }]])
+    }))
+    await writeVueDoctorCache('contracts-v2', createVueDoctorCacheKey(legacyParts), serialize({
+      format: 2,
+      manifest: { dependencies: [], resolutionFingerprint: 'legacy' },
+      contracts: legacyContracts
+    }), cacheDirectory)
+
+    const result = await extractComponentLibraryContracts(evidence)
+
+    expect(result.components.get('Choice')?.props.entries.get('value')?.types).toEqual([
+      { kind: 'literal', value: '1' }, { kind: 'literal', value: 1 }
+    ])
+  })
+
+  test.each([
+    { name: 'missing contract map fields', contracts: {} },
+    { name: 'non-Map components', contracts: { components: {}, sources: [], problems: [] } },
+    {
+      name: 'non-Map prop entries',
+      contracts: {
+        components: new Map([['ExampleButton', {
+          ...contract('ExampleButton', 'web-types'),
+          props: { knowledge: 'known', acceptance: 'closed', entries: {}, issues: [] }
+        }]]),
+        sources: [],
+        problems: []
+      }
+    },
+    {
+      name: 'invalid prop types',
+      contracts: {
+        components: new Map([['ExampleButton', {
+          ...contract('ExampleButton', 'web-types'),
+          props: {
+            ...dimension('known'),
+            entries: new Map([['label', { name: 'label', types: [{ kind: 'literal', value: {} }] }]])
+          }
+        }]]),
+        sources: [],
+        problems: []
+      }
+    },
+    {
+      name: 'invalid event signatures',
+      contracts: {
+        components: new Map([['ExampleButton', {
+          ...contract('ExampleButton', 'web-types'),
+          events: {
+            ...dimension('known'),
+            entries: new Map([['change', { name: 'change', source: 'emit', signatures: [{}] }]])
+          }
+        }]]),
+        sources: [],
+        problems: []
+      }
+    },
+    {
+      name: 'invalid slot entries',
+      contracts: {
+        components: new Map([['ExampleButton', {
+          ...contract('ExampleButton', 'web-types'),
+          slots: { ...dimension('known'), entries: new Map([['default', null]]) }
+        }]]),
+        sources: [],
+        problems: []
+      }
+    },
+    {
+      name: 'invalid aliases',
+      contracts: {
+        components: new Map([['ExampleButton', { ...contract('ExampleButton', 'web-types'), aliases: null }]]),
+        sources: [],
+        problems: []
+      }
+    },
+    {
+      name: 'invalid provenance',
+      contracts: { components: new Map(), sources: [null], problems: [] }
+    }
+  ])('reparses malformed binary contract cache payloads: $name', async ({ contracts }) => {
+    const cacheDirectory = await mkdtemp(join(tmpdir(), 'vue-doctor-contract-cache-corrupt-'))
+    fixtureRoots.push(cacheDirectory)
+    const evidence = await createFixture({
+      'web-types.json': JSON.stringify({
+        contributions: { html: { elements: [{
+          name: 'example-button',
+          attributes: [{ name: 'label', required: true, type: 'string' }]
+        }] } }
+      })
+    }, { 'web-types': './web-types.json' })
+    evidence.runtime = false
+    evidence.cache = true
+    evidence.cacheDirectory = cacheDirectory
+    const key = await createContractCacheKey(evidence)
+    expect(key).toBeDefined()
+    await writeVueDoctorCache('contracts-v2', key!, serialize({
+      format: 2,
+      manifest: { dependencies: [], resolutionFingerprint: 'corruption-probe' },
+      contracts
+    }), cacheDirectory)
+
+    const result = await extractComponentLibraryContracts(evidence)
+
+    expect(result.problems).toEqual([])
+    expect([...result.components.get('ExampleButton')!.props.entries.values()]).toEqual([
+      { name: 'label', required: true, types: [{ kind: 'string' }] }
+    ])
+    expect(await extractComponentLibraryContracts(evidence)).toEqual(result)
   })
 
   test('invalidates cached declarations when a transitive type dependency changes', async () => {

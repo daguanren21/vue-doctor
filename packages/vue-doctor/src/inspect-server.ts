@@ -1,10 +1,10 @@
 import { spawn } from 'node:child_process'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { getEditorCommand as getInspectorEditorCommand } from '@vue-doctor/inspector'
-import { createInspectorHost } from '@vue-doctor/inspector/host'
-import { createInspectorHubUi, inspectorClientAssets, readInspectorAsset } from '@vue-doctor/inspector-ui/assets'
-import type { DoctorReport } from '@vue-doctor/core'
+import { getEditorCommand as getInspectorEditorCommand } from '@daguanren21/vue-doctor-inspector'
+import { createInspectorHost } from '@daguanren21/vue-doctor-inspector/host'
+import { createInspectorHubUi, inspectorClientAssets, readInspectorAsset } from '@daguanren21/vue-doctor-inspector-ui/assets'
+import type { DoctorReport } from '@daguanren21/vue-doctor-core'
 
 export interface InspectorServerOptions {
   report: DoctorReport
@@ -20,8 +20,8 @@ export interface InspectorServerOptions {
   openEditor?: (request: OpenEditorRequest) => Promise<void>
 }
 
-export type { EditorName } from '@vue-doctor/inspector'
-import type { EditorName } from '@vue-doctor/inspector'
+export type { EditorName } from '@daguanren21/vue-doctor-inspector'
+import type { EditorName } from '@daguanren21/vue-doctor-inspector'
 
 export interface OpenEditorRequest {
   editor: EditorName

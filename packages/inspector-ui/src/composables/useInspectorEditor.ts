@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { isInspectorEditor, type InspectorEditor } from '@vue-doctor/inspector-protocol'
+import { isInspectorEditor, type InspectorEditor } from '@daguanren21/vue-doctor-inspector-protocol'
 export type EditorName = InspectorEditor
 
 type StorageLike = Pick<Storage, 'getItem' | 'setItem'>

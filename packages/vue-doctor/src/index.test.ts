@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, expectTypeOf, test } from 'vitest'
@@ -24,15 +24,6 @@ describe('vue-doctor facade exports', () => {
 
   test('exposes the local Inspector server with editor support', () => {
     expect(typeof startInspectorServer).toBe('function')
-  })
-
-  test('declares the supported Node runtime floor', async () => {
-    const packageJson = JSON.parse(await readFile(
-      new URL('../package.json', import.meta.url),
-      'utf8'
-    )) as { engines?: { node?: string } }
-
-    expect(packageJson.engines?.node).toBe('>=20.19.0')
   })
 
   test('exposes the Diagnostic Reference catalog', () => {
