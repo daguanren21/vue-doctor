@@ -1,6 +1,7 @@
 import tsParser from '@typescript-eslint/parser'
 import { parse as parseSfcDescriptor, type SFCDescriptor } from '@vue/compiler-sfc'
 import { parse as parseJavaScript, parseForESLint } from 'vue-eslint-parser'
+import { templateParser } from './template-parser.js'
 import type {
   ParsedVueDocument,
   ParsedVueSource,
@@ -19,7 +20,7 @@ interface ParsedBlock {
 }
 
 export function parseVueSource(source: string, file: string): ParsedVueSource {
-  const { descriptor, errors } = parseSfcDescriptor(source, { filename: file, ignoreEmpty: false })
+  const { descriptor, errors } = parseSfcDescriptor(source, { filename: file, ignoreEmpty: false, sourceMap: false })
   const { failures: descriptorFailures, blocksByError } = collectDescriptorFailures(errors, source)
   const template = withDescriptorFailure(
     'template',
@@ -249,7 +250,7 @@ function parseTemplateBlock(content: string | undefined, lang: string | undefine
         jsx: 'espree',
         ts: tsParser,
         tsx: tsParser,
-        '<template>': tsParser
+        '<template>': templateParser
       }
     })
     const templateErrors = ((parsed.ast.templateBody as { errors?: unknown[] } | undefined)?.errors ?? [])

@@ -7,6 +7,9 @@
 - Route subsequent releases through repoctl 6.3.0 and GitHub Actions npm Trusted Publishing (OIDC), retaining a single public package and the public-workspace verification gate.
 - Reject incompatible release dry-run modes before preparation so preview inputs cannot bypass release checks.
 - Include Inspector coverage components in clean source checkouts by ignoring only generated root coverage reports.
+- Defer skill-installer loading until a skill operation is requested, keeping its configuration parsers off diagnostic startup.
+- Reuse immutable TypeScript library reference metadata and omit unused SFC source maps while preserving per-expression scopes, type/value references and source locations.
+- Evaluate rule applicability once per distinct owning Vue version without changing package overrides, unavailable checks or source coverage.
 
 ## 0.1.0
 

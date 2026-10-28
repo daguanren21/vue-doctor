@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { describe, expect, test } from 'vitest'
+import type { AST } from 'vue-eslint-parser'
 import { analyzeSourceText, parseVueSource, scanVueSourceUsage } from './index.js'
 
 async function projectWithFile(content: string) {
@@ -82,6 +83,49 @@ describe('independent Vue SFC block analysis', () => {
       { kind: 'script', status: 'available' },
       { kind: 'script-setup', status: 'absent' }
     ])
+  })
+
+  test('preserves template type references, library globals and loop bindings across files', () => {
+    const source = '<template><div v-for="item in items" :value="item as Array<Custom>" @click="(event: MouseEvent) => handle(event, Math.max(value, 0))" /></template>'
+    const parsed = parseVueSource(source, 'First.vue')
+    expect(parsed.blocks[0]?.status).toBe('available')
+    // The successful Vue parse exposes vue-eslint-parser's Program with its template root.
+    const ast = parsed.templateAst as { templateBody: AST.VElement }
+    const template = ast.templateBody
+    const element = template.children.find((node): node is AST.VElement => node.type === 'VElement')!
+    const references = () => element.startTag.attributes.map(attribute =>
+      attribute.value?.type === 'VExpressionContainer'
+        ? attribute.value.references.map(reference => ({
+            name: reference.id.name,
+            type: reference.isTypeReference,
+            value: reference.isValueReference,
+            variable: reference.variable?.id.name
+          }))
+        : []
+    )
+    const expected = [
+      [{ name: 'items', type: false, value: true, variable: undefined }],
+      [
+        { name: 'item', type: false, value: true, variable: 'item' },
+        { name: 'Custom', type: true, value: false, variable: undefined }
+      ],
+      [
+        { name: 'MouseEvent', type: true, value: false, variable: undefined },
+        { name: 'handle', type: false, value: true, variable: undefined },
+        { name: 'value', type: false, value: true, variable: undefined }
+      ]
+    ]
+    expect(references()).toEqual(expected)
+    expect(element.variables[0]?.references.map(reference => reference.id.name)).toEqual(['item'])
+
+    const next = parseVueSource('<template><div v-for="Array in items">{{ Array.from(items) }}</div></template>', 'Second.vue')
+    const nextAst = next.templateAst as typeof ast
+    const nextTemplate = nextAst.templateBody
+    const nextElement = nextTemplate.children.find((node): node is AST.VElement => node.type === 'VElement')!
+    expect(nextElement.variables[0]?.references).toEqual([])
+    const interpolation = nextElement.children.find((node): node is AST.VExpressionContainer => node.type === 'VExpressionContainer')!
+    expect(interpolation.references.map(reference => reference.id.name)).toEqual(['items'])
+    expect(references()).toEqual(expected)
   })
 
   test('parses a Vue 2 style plain script and template', async () => {

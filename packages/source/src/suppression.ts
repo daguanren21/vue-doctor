@@ -2,6 +2,7 @@ import tsParser from '@typescript-eslint/parser'
 import { parse as parseSfcDescriptor } from '@vue/compiler-sfc'
 import { parseForESLint } from 'vue-eslint-parser'
 import { extname } from 'node:path'
+import { templateParser } from './template-parser.js'
 
 const DIRECTIVE_PREFIX = 'vue-doctor-disable-'
 const DIRECTIVE_PATTERN = /^(vue-doctor-disable-(line|next-line))\s+(\S+)\s+--\s+(.+?)\s*$/
@@ -80,7 +81,7 @@ function extractHtmlSuppressions(file: string, source: string): SourceSuppressio
     const parsed = parseForESLint(`${prefix}${sanitizeHtmlForTemplate(source)}\n</template>`, {
       sourceType: 'module',
       ecmaVersion: 'latest',
-      parser: { js: 'espree', jsx: 'espree', ts: tsParser, tsx: tsParser, '<template>': tsParser }
+      parser: { js: 'espree', jsx: 'espree', ts: tsParser, tsx: tsParser, '<template>': templateParser }
     }) as unknown as { ast: { templateBody?: { comments?: ParserComment[]; errors?: unknown[] } } }
     const errors = (parsed.ast.templateBody?.errors ?? []).filter((error) => !isIgnorableTemplateError(error))
     if (errors.length > 0) return failedScan(file, source, parseFailureMessage(errors[0]))
@@ -136,7 +137,7 @@ function extractScriptSuppressions(file: string, source: string): SourceSuppress
 
 function extractVueSuppressions(file: string, source: string): SourceSuppressionScan {
   try {
-    const parsedSfc = parseSfcDescriptor(source, { filename: file, ignoreEmpty: false })
+    const parsedSfc = parseSfcDescriptor(source, { filename: file, ignoreEmpty: false, sourceMap: false })
     if (parsedSfc.errors.length > 0) {
       return failedScan(file, source, parseFailureMessage(parsedSfc.errors[0]))
     }
@@ -149,7 +150,7 @@ function extractVueSuppressions(file: string, source: string): SourceSuppression
         jsx: 'espree',
         ts: tsParser,
         tsx: tsParser,
-        '<template>': tsParser
+        '<template>': templateParser
       }
     }) as unknown as {
       ast: {

@@ -96,46 +96,58 @@ function createVueRuleCheck(
     }
   }
 
-  const targets = options.source.fileResults.flatMap<CheckTarget>((result) => {
+  const constrainedVersion = hasVueApplicabilityConstraint(rule)
+  const versions = constrainedVersion || rule.requires?.vueVersion === 'known'
+    ? new Map<string | undefined, 'available' | 'not-applicable' | 'missing' | 'unsupported'>()
+    : undefined
+  const targets: CheckTarget[] = []
+  for (const result of options.source.fileResults) {
     const capability = sourceCapabilityTarget(rule, result)
-    if (!capability) return []
+    if (!capability) continue
 
-    const version = resolveTargetVueVersion(result.file, options)
-    const requiresVersion = hasVueApplicabilityConstraint(rule) || rule.requires?.vueVersion === 'known'
-    const resolvedVersion = resolveVueVersion(version)
-    if (resolvedVersion && hasVueApplicabilityConstraint(rule) && !isDoctorRuleApplicable(rule, {
-      vueVersion: version,
-      assumeLatestVueVersion: false
-    })) {
-      return []
-    }
-    if (requiresVersion && !isSupportedVueVersion(resolvedVersion)) {
-      return [{
-        file: result.file,
-        checked: false,
-        skip: createVueCapabilitySkip(
-          rule.code,
-          result.file,
-          capability.failures,
-          resolvedVersion ? 'unsupported' : 'missing'
-        )
-      } satisfies CheckTarget]
+    if (versions) {
+      const version = resolveTargetVueVersion(result.file, options)
+      let status = versions.get(version)
+      if (status === undefined) {
+        const resolvedVersion = resolveVueVersion(version)
+        if (resolvedVersion && constrainedVersion && !isDoctorRuleApplicable(rule, {
+          vueVersion: version,
+          assumeLatestVueVersion: false
+        })) {
+          status = 'not-applicable'
+        } else if (!isSupportedVueVersion(resolvedVersion)) {
+          status = resolvedVersion ? 'unsupported' : 'missing'
+        } else {
+          status = 'available'
+        }
+        versions.set(version, status)
+      }
+      if (status === 'not-applicable') continue
+      if (status !== 'available') {
+        targets.push({
+          file: result.file,
+          checked: false,
+          skip: createVueCapabilitySkip(rule.code, result.file, capability.failures, status)
+        })
+        continue
+      }
     }
 
+    const target: CheckTarget = { file: result.file, checked: capability.available }
     if (capability.failures.length > 0) {
-      return [{
-        file: result.file,
-        checked: capability.available,
-        skip: createVueCapabilitySkip(rule.code, result.file, capability.failures)
-      } satisfies CheckTarget]
+      target.skip = createVueCapabilitySkip(rule.code, result.file, capability.failures)
     }
+    targets.push(target)
+  }
 
-    return [{ file: result.file, checked: capability.available } satisfies CheckTarget]
-  })
+  const skippedChecks: SkippedCheck[] = []
+  for (const target of targets) {
+    if (target.skip) skippedChecks.push(target.skip)
+  }
 
   return {
     check: aggregateTargets(rule.code, 'vue', targets),
-    skippedChecks: targets.flatMap((target) => target.skip ? [target.skip] : [])
+    skippedChecks
   }
 }
 
