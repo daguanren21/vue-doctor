@@ -46,6 +46,6 @@
     "devframe": "1.2.1"
   },
   "devDependencies": {
-    "@devframes/hub-ui": "1.2.1"
+    "@devframes/hub-ui": "1.2.6"
   }
 }
