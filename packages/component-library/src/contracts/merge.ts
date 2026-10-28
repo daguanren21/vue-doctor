@@ -166,9 +166,6 @@ function cloneContractMap(contracts: ComponentContractMap): ComponentContractMap
   return structuredClone(contracts)
 }
 
-export function getContractExtractionCacheStateForTests(): { size: number; limit: number } {
-  return { size: contractExtractions.size, limit: maxContractExtractions }
-}
 
 export function mergeComponentContractMaps(
   maps: ComponentContractMap[]

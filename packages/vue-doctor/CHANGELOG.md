@@ -10,6 +10,8 @@
 - Defer skill-installer loading until a skill operation is requested, keeping its configuration parsers off diagnostic startup.
 - Reuse immutable TypeScript library reference metadata and omit unused SFC source maps while preserving per-expression scopes, type/value references and source locations.
 - Evaluate rule applicability once per distinct owning Vue version without changing package overrides, unavailable checks or source coverage.
+- Keep declaration-cache isolation and invalidation tests on real persistent fixtures without redundant repeated reads or increased timeouts.
+- Run the public-workspace verification gate on pull requests with read-only GitHub permissions before release integration.
 
 ## 0.1.0
 
