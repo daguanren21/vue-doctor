@@ -1,8 +1,12 @@
 {
-  "name": "@vue-doctor/source",
-  "version": "0.0.0",
+  "name": "@daguanren21/vue-doctor-source",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
   "type": "module",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.mts",
@@ -10,7 +14,7 @@
     }
   },
   "dependencies": {
-    "@typescript-eslint/parser": "8.63.0",
+    "@typescript-eslint/parser": "8.72.0",
     "@vue/compiler-sfc": "3.5.39",
     "espree": "11.2.0",
     "typescript": "6.0.3",

@@ -1,4 +1,4 @@
-import type { Diagnostic, EvidenceLocation } from '@vue-doctor/core'
+import type { Diagnostic, EvidenceLocation } from '@daguanren21/vue-doctor-core'
 import { primarySourceLocation } from './evidence'
 
 export interface SnippetLine {

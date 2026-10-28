@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { parseVueSource } from '@vue-doctor/source'
+import { parseVueSource } from '@daguanren21/vue-doctor-source'
 import { diagnoseVueSource } from './index.js'
 
 function diagnose(source: string, file = '/project/src/App.vue') {

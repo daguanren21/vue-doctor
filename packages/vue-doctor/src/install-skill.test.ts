@@ -18,7 +18,7 @@ async function exists(path: string) {
 }
 
 describe('install skill helpers', () => {
-  test('resolves bundled skill source from monorepo layout', async () => {
+  test('resolves the bundled package-local skill source', async () => {
     const source = await resolveSkillSourceDirectory()
     expect(await exists(join(source, 'SKILL.md'))).toBe(true)
     const content = await readFile(join(source, 'SKILL.md'), 'utf8')

@@ -1,3 +1,4 @@
+import { collectScriptBindingFacts, resolveLexicalBinding, type LexicalBindingFact } from './bindings.js'
 import { resolveStaticValue } from './static-value.js'
 import type { StaticKnowledge, StaticValue } from './types.js'
 
@@ -149,6 +150,7 @@ function collectLexicalConstants(
     }
     if (['ReturnStatement', 'YieldExpression', 'AwaitExpression'].includes(node.type ?? '')) invalidateReferences(node.argument, true)
     if (['AssignmentExpression', 'UpdateExpression', 'ExportNamedDeclaration', 'ExportDefaultDeclaration'].includes(node.type ?? '')) invalidateReferences(node)
+    if ((node.type === 'ForOfStatement' || node.type === 'ForInStatement') && (node.left as Node | undefined)?.type !== 'VariableDeclaration') invalidateReferences(node.left)
     if (node.type === 'UnaryExpression' && node.operator === 'delete') invalidateReferences(node.argument)
     if (node.type === 'VAttribute' && node.directive) {
       const key = node.key as { name?: { name?: string } } | undefined
@@ -163,6 +165,7 @@ function collectLexicalConstants(
   }
   walk(program, inspect)
   walk(additionalUsage, inspect)
+  invalidateIterationSources(program, additionalUsage, invalidateReferences, transparent)
   // Aliases share mutable objects: uncertainty propagates both to the source and its dependents.
   let changed = true
   while (changed) {
@@ -282,6 +285,7 @@ export function collectOptionsConstants(program: unknown, additionalUsage?: unkn
       invalidateInstance(node.left)
       invalidateInstance(node.right)
     }
+    if ((node.type === 'ForOfStatement' || node.type === 'ForInStatement') && (node.left as Node | undefined)?.type !== 'VariableDeclaration') invalidateInstance(node.left)
     if (node.type === 'UpdateExpression' || (node.type === 'UnaryExpression' && node.operator === 'delete')) invalidateInstance(node.argument)
     if (node.type === 'VariableDeclarator') invalidateInstance(node.init)
     if (node.type === 'ReturnStatement' && !transparent.has(node)) invalidateInstance(node.argument)
@@ -295,6 +299,7 @@ export function collectOptionsConstants(program: unknown, additionalUsage?: unkn
       }
     }
   })
+  invalidateIterationSources(program, additionalUsage, invalidateInstance, transparent)
   const templateConstants = collectLexicalConstants({ body: [] }, additionalUsage, exposed)
   for (const name of exposed.keys()) if (!templateConstants.has(name)) invalid.add(name)
   // Two returned fields may share a mutable object, including nested aliases.
@@ -314,18 +319,126 @@ export function collectOptionsConstants(program: unknown, additionalUsage?: unkn
   return exposed
 }
 
+/** Iteration writes rebind the target; only mutation or escape of its value exposes the source. */
+function invalidateIterationSources(
+  program: unknown,
+  additionalUsage: unknown,
+  invalidateSource: (value: unknown) => void,
+  transparent: ReadonlySet<unknown>
+) {
+  let hasIteration = false
+  walk(program, (node) => { if (node.type === 'ForOfStatement') hasIteration = true })
+  if (!hasIteration) return
+
+  const facts = collectScriptBindingFacts(program)
+  const dependencies = new Map<LexicalBindingFact, Set<LexicalBindingFact>>()
+  const sources = new Map<LexicalBindingFact, unknown[]>()
+  const escaped = new Set<LexicalBindingFact>()
+  const escape = (value: unknown, skipCallResults = false, template = false) => {
+    walkReferences(value, (name, reference) => {
+      const binding = template
+        ? facts.scopes[0]?.bindings.find(binding => binding.name === name)
+        : resolveLexicalBinding(facts, reference)
+      if (binding) escaped.add(binding)
+    }, false, skipCallResults)
+  }
+  const link = (target: unknown, value: unknown, iteration = false) => {
+    if (!value) return
+    const references = new Set<LexicalBindingFact>()
+    const initializer = value as Node | undefined
+    if (!['FunctionExpression', 'ArrowFunctionExpression', 'ClassExpression'].includes(initializer?.type ?? '')) {
+      walkReferences(value, (_name, reference) => {
+        const binding = resolveLexicalBinding(facts, reference)
+        if (binding) references.add(binding)
+      }, false, true)
+    }
+    walkAssignmentTargets(target, (target) => {
+      const binding = resolveLexicalBinding(facts, target)
+      if (binding) {
+        if (references.size) {
+          const related = dependencies.get(binding) ?? new Set<LexicalBindingFact>()
+          for (const reference of references) related.add(reference)
+          dependencies.set(binding, related)
+        }
+        if (iteration) {
+          const values = sources.get(binding) ?? []
+          values.push(value)
+          sources.set(binding, values)
+        }
+      } else {
+        // A member/global target exposes each iterated object outside the alias graph.
+        escape(value)
+        if (iteration) invalidateSource(value)
+      }
+    })
+  }
+  const mutate = (target: unknown, template: boolean) => {
+    walkAssignmentTargets(target, (target) => {
+      if (target.type === 'MemberExpression') escape(target.object, false, template)
+    })
+  }
+  const inspect = (node: Node, template = false) => {
+    if (transparent.has(node)) return
+    if (node.type === 'VariableDeclarator') link(node.id, node.init)
+    if (node.type === 'AssignmentPattern') link(node.left, node.right)
+    if (node.type === 'ForOfStatement') link(node.left, node.right, true)
+    if (node.type === 'AssignmentExpression') {
+      if (template) escape(node.right, false, true)
+      else if (node.operator === '=') link(node.left, node.right)
+      mutate(node.left, template)
+    }
+    if (node.type === 'UpdateExpression' || (node.type === 'UnaryExpression' && node.operator === 'delete')) mutate(node.argument, template)
+    if (node.type === 'ForOfStatement' || node.type === 'ForInStatement') mutate(node.left, template)
+    if (node.type === 'CallExpression' || node.type === 'NewExpression' || node.type === 'TaggedTemplateExpression') {
+      escape(node.arguments ?? node.quasi, false, template)
+      const callee = (node.callee ?? node.tag) as Node | undefined
+      if (callee?.type !== 'Identifier') escape(callee, false, template)
+    }
+    if (['ReturnStatement', 'YieldExpression', 'AwaitExpression', 'ThrowStatement'].includes(node.type ?? '')) escape(node.argument, true, template)
+    if (node.type === 'ArrowFunctionExpression' && (node.body as Node | undefined)?.type !== 'BlockStatement' && !transparent.has(node.body)) escape(node.body, true, template)
+    if (node.type === 'ExportNamedDeclaration' || node.type === 'ExportDefaultDeclaration') escape(node, true, template)
+    if (node.type === 'VAttribute' && node.directive) {
+      const key = node.key as { name?: { name?: string } } | undefined
+      if (key?.name?.name === 'model') mutate(node.value, template)
+    }
+  }
+  walk(program, inspect)
+  walk(additionalUsage, (node) => inspect(node, true))
+
+  const pending = [...escaped]
+  for (let index = 0; index < pending.length; index++) {
+    const binding = pending[index]!
+    for (const source of sources.get(binding) ?? []) invalidateSource(source)
+    for (const reference of dependencies.get(binding) ?? []) {
+      if (!escaped.has(reference)) {
+        escaped.add(reference)
+        pending.push(reference)
+      }
+    }
+  }
+}
+
 /** Binding names are not reads; computed keys and defaults are handled by walkReferences. */
 function walkBindings(value: unknown, visit: (name: string) => void) {
+  walkAssignmentTargets(value, (node) => {
+    if (node.type === 'Identifier') visit(String(node.name))
+  })
+}
+
+function walkAssignmentTargets(value: unknown, visit: (node: Node) => void) {
   if (!value || typeof value !== 'object') return
-  if (Array.isArray(value)) { for (const child of value) walkBindings(child, visit); return }
+  if (Array.isArray(value)) { for (const child of value) walkAssignmentTargets(child, visit); return }
   const node = value as Node
-  if (node.type === 'Identifier') visit(String(node.name))
-  else if (node.type === 'ObjectPattern') {
-    for (const property of (node.properties ?? []) as Node[]) walkBindings(property.type === 'RestElement' ? property.argument : property.value, visit)
-  } else if (node.type === 'ArrayPattern') walkBindings(node.elements, visit)
-  else if (node.type === 'RestElement') walkBindings(node.argument, visit)
-  else if (node.type === 'AssignmentPattern') walkBindings(node.left, visit)
-  else if (node.type === 'TSParameterProperty') walkBindings(node.parameter, visit)
+  if (node.type === 'Identifier' || node.type === 'MemberExpression') visit(node)
+  else if (node.type === 'VariableDeclaration') {
+    for (const declaration of (node.declarations ?? []) as Node[]) walkAssignmentTargets(declaration.id, visit)
+  } else if (node.type === 'ObjectPattern') {
+    for (const property of (node.properties ?? []) as Node[]) walkAssignmentTargets(property.type === 'RestElement' ? property.argument : property.value, visit)
+  } else if (node.type === 'ArrayPattern') walkAssignmentTargets(node.elements, visit)
+  else if (node.type === 'RestElement') walkAssignmentTargets(node.argument, visit)
+  else if (node.type === 'AssignmentPattern') walkAssignmentTargets(node.left, visit)
+  else if (node.type === 'TSParameterProperty') walkAssignmentTargets(node.parameter, visit)
+  else if (['TSAsExpression', 'TSSatisfiesExpression', 'TSNonNullExpression', 'ChainExpression', 'TSTypeAssertion', 'VExpressionContainer'].includes(node.type ?? '')) walkAssignmentTargets(node.expression, visit)
 }
 
 /** Walk runtime references, not property spellings, labels, or declaration bindings. */

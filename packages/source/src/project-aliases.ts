@@ -1,5 +1,9 @@
-import ts from 'typescript'
+import { createRequire } from 'node:module'
+import type * as TypeScript from 'typescript'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
+
+// TypeScript is CommonJS; require avoids a redundant ESM syntax-detection pass.
+const ts: typeof TypeScript = createRequire(import.meta.url)('typescript')
 
 export interface ProjectAlias {
   pattern: string

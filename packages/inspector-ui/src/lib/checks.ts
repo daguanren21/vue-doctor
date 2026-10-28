@@ -1,4 +1,4 @@
-import type { DoctorReport, DoctorRuleCheck, DoctorRuleDefinition } from '@vue-doctor/core'
+import type { DoctorReport, DoctorRuleCheck, DoctorRuleDefinition } from '@daguanren21/vue-doctor-core'
 
 export interface InspectorCheckRow {
   pack: string

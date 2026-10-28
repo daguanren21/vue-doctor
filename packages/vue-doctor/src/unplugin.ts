@@ -6,8 +6,8 @@ export {
   vueDoctorUnplugin,
   vueDoctorVite,
   vueDoctorWebpack
-} from '@vue-doctor/unplugin'
+} from '@daguanren21/vue-doctor-unplugin'
 export type {
   VueDoctorRunMode,
   VueDoctorUnpluginOptions
-} from '@vue-doctor/unplugin'
+} from '@daguanren21/vue-doctor-unplugin/options'

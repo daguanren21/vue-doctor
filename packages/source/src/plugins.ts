@@ -1,7 +1,8 @@
 import tsParser from '@typescript-eslint/parser'
-import { collectScriptBindingFacts, resolveImportedBinding } from './bindings.js'
+import { collectScriptBindingFacts, resolveImportedBinding, resolveLexicalBinding, type LexicalBindingFact, type ScriptBindingFacts } from './bindings.js'
 import { collectPackageImports } from './origins.js'
 import { parseVueScriptContext } from './sfc.js'
+import { walkReferences } from './static-knowledge.js'
 import type {
   SourceApplicationFact,
   SourceGlobImport,
@@ -26,10 +27,17 @@ type AstNode = {
   init?: AstNode
   expression?: AstNode
   callee?: AstNode
+  tag?: AstNode
+  quasi?: AstNode
   object?: AstNode
   property?: AstNode
   computed?: boolean
   arguments?: AstNode[]
+  argument?: AstNode
+  left?: AstNode
+  right?: AstNode
+  properties?: AstNode[]
+  elements?: Array<AstNode | null>
   params?: AstNode[]
   openingElement?: AstNode
   range?: [number, number]
@@ -116,80 +124,172 @@ function collectVueFacts(
   const applications: SourceApplicationFact[] = []
   const constructorPlugins = new Map<string, VueGlobalPluginUsage[]>()
 
-  for (const statement of root.body ?? []) {
-    const variableStatement = statement.type === 'ExportNamedDeclaration' ? statement.declaration : statement
-    if (variableStatement?.type !== 'VariableDeclaration') continue
-    for (const declaration of variableStatement.declarations ?? []) {
-      if (declaration.id?.type !== 'Identifier' || !declaration.id.name) continue
-      const init = unwrap(declaration.init)
-      const factoryCall = findVueFactoryCall(init, bindingFacts, vueImportRoots)
-      if (factoryCall) {
-        const rootComponent = unwrap(factoryCall.arguments?.[0])
-        const rootBinding = rootComponent?.type === 'Identifier'
-          ? resolveImportedBinding(bindingFacts, rootComponent)
-          : undefined
-        const application = applicationFromFactory(file, declaration.id.name, rootComponent, rootBinding)
-        application.plugins.push(...collectTopLevelUseCalls(init).flatMap((useCall) => {
-          const plugin = resolvePluginRegistration(file, useCall, bindingFacts, packageImports)
-          return plugin ? [plugin] : []
-        }))
-        applications.push(application)
-        continue
+  type Receiver = SourceApplicationFact | string
+  const receivers = new Map<LexicalBindingFact, Receiver>()
+  const unavailableBindings = new Set<LexicalBindingFact>()
+  const invalidReceivers = new Set<Receiver>()
+
+  const identifierReceiver = (identifier: AstNode): Receiver | undefined => {
+    const binding = resolveLexicalBinding(bindingFacts, identifier)
+    if (!binding || unavailableBindings.has(binding)) return undefined
+    const receiver = receivers.get(binding) ?? (
+      binding.kind === 'import' && binding.source && vueImportRoots.has(binding.source)
+      && (binding.imported === 'default' || binding.imported === '*')
+        ? binding.source
+        : undefined
+    )
+    return receiver !== undefined && !invalidReceivers.has(receiver) ? receiver : undefined
+  }
+
+  const invalidateReferences = (value: unknown, deferred: boolean): void => {
+    walkReferences(value, (_name, reference) => {
+      const binding = resolveLexicalBinding(bindingFacts, reference)
+      if (!binding) return
+      if (deferred) unavailableBindings.add(binding)
+      else {
+        const receiver = identifierReceiver(reference as AstNode)
+        if (receiver !== undefined) invalidReceivers.add(receiver)
       }
-      const vue2 = findVue2Constructor(init, bindingFacts, vueImportRoots)
-      if (vue2) applications.push(applicationFromVue2(file, declaration.id.name, vue2, bindingFacts))
+    })
+  }
+
+  const invalidateTarget = (rawTarget: AstNode | undefined, deferred: boolean): void => {
+    const target = unwrap(rawTarget)
+    if (!target) return
+    if (target.type === 'Identifier') {
+      const binding = resolveLexicalBinding(bindingFacts, target)
+      if (binding) {
+        if (deferred || binding.kind !== 'variable') unavailableBindings.add(binding)
+        receivers.delete(binding)
+      }
+    } else if (target.type === 'MemberExpression') {
+      invalidateReferences(target.object, deferred)
+    } else if (target.type === 'ObjectPattern') {
+      for (const property of target.properties ?? []) {
+        invalidateTarget(property.type === 'RestElement' ? property.argument : property.value as AstNode, deferred)
+      }
+    } else if (target.type === 'ArrayPattern') {
+      for (const element of target.elements ?? []) invalidateTarget(element ?? undefined, deferred)
+    } else if (target.type === 'AssignmentPattern') {
+      invalidateTarget(target.left, deferred)
+    } else if (target.type === 'RestElement') {
+      invalidateTarget(target.argument, deferred)
     }
   }
 
-  for (const statement of root.body ?? []) {
-    if (statement.type !== 'ExpressionStatement') continue
-    const factoryCall = findVueFactoryCall(statement.expression, bindingFacts, vueImportRoots)
-    let inlineApplication: SourceApplicationFact | undefined
-    if (factoryCall) {
-      const rootComponent = unwrap(factoryCall.arguments?.[0])
-      const rootBinding = rootComponent?.type === 'Identifier'
-        ? resolveImportedBinding(bindingFacts, rootComponent)
-        : undefined
-      inlineApplication = applicationFromFactory(
-        file,
-        `inline-${factoryCall.range?.[0] ?? applications.length}`,
-        rootComponent,
-        rootBinding
-      )
-      applications.push(inlineApplication)
-    }
-    const vue2Constructor = findVue2Constructor(statement.expression, bindingFacts, vueImportRoots)
-    if (vue2Constructor) {
-      applications.push(applicationFromVue2(
-        file,
-        `vue2-inline-${vue2Constructor.range?.[0] ?? applications.length}`,
-        vue2Constructor,
-        bindingFacts
-      ))
-    }
-    for (const useCall of collectTopLevelUseCalls(statement.expression)) {
-      const receiver = ultimateUseReceiver(useCall)
-      const registration = resolvePluginRegistration(file, useCall, bindingFacts, packageImports)
-      if (!registration) continue
+  const inspectEffects = (expression: AstNode, deferred = false): void => {
+    visitAst(expression, node => {
+      if (node.type === 'AssignmentExpression') {
+        invalidateTarget(node.left, deferred)
+        invalidateReferences(node.right, deferred)
+      } else if (node.type === 'UpdateExpression' || (node.type === 'UnaryExpression' && node.operator === 'delete')) {
+        invalidateTarget(node.argument, deferred)
+      } else if (node.type === 'ForOfStatement' || node.type === 'ForInStatement') {
+        if (node.left?.type === 'VariableDeclaration') {
+          for (const declaration of node.left.declarations ?? []) invalidateTarget(declaration.id, deferred)
+        } else invalidateTarget(node.left, deferred)
+        if (node.type === 'ForOfStatement') invalidateReferences(node.right, deferred)
+      } else if (node.type === 'VariableDeclarator') {
+        // Aliases in unsupported control flow must not conceal writes or escapes.
+        if (node.init) {
+          invalidateTarget(node.id, deferred)
+          invalidateReferences(node.init, deferred)
+        }
+      } else if (node.type === 'CallExpression' || node.type === 'NewExpression' || node.type === 'TaggedTemplateExpression') {
+        invalidateReferences(node.arguments ?? node.quasi, deferred)
+        const callee = unwrap(node.callee ?? node.tag)
+        if (callee?.type === 'MemberExpression' && !isVue3CreateApp(callee, bindingFacts, vueImportRoots)) {
+          const object = unwrap(callee.object)
+          const receiver = object?.type === 'Identifier' ? identifierReceiver(object) : undefined
+          if (!hasKnownVueMethod(memberName(callee), receiver === undefined ? undefined : typeof receiver === 'string')) {
+            invalidateReferences(callee.object, deferred)
+          }
+        }
+      } else if (node.type === 'ReturnStatement' || node.type === 'YieldExpression' || node.type === 'AwaitExpression') {
+        invalidateReferences(node.argument, deferred)
+      }
+    })
+  }
 
-      const application = receiver?.type === 'Identifier' && receiver.name
-        ? applications.find((candidate) => candidate.appLocalName === receiver.name)
-        : inlineApplication
-      if (application) {
-        application.plugins.push(registration)
-        continue
+  // A deferred closure may run between otherwise adjacent top-level statements.
+  visitAst(root, node => {
+    if (!['FunctionDeclaration', 'FunctionExpression', 'ArrowFunctionExpression'].includes(node.type ?? '')) return
+    inspectEffects(node, true)
+    return false
+  })
+
+  const liveVueImport = (rawCallee: AstNode | undefined): boolean => {
+    const callee = unwrap(rawCallee)
+    const identifier = callee?.type === 'MemberExpression' ? unwrap(callee.object) : callee
+    const binding = resolveImportedBinding(bindingFacts, identifier)
+    return Boolean(binding && !unavailableBindings.has(binding) && !invalidReceivers.has(binding.source ?? ''))
+  }
+
+  const collectReceiver = (rawExpression: AstNode | undefined, localName?: string): Receiver | undefined => {
+    const expression = unwrap(rawExpression)
+    if (!expression) return undefined
+    if (expression.type === 'Identifier') return identifierReceiver(expression)
+    if (expression.type === 'CallExpression' && liveVueImport(expression.callee) && isVue3CreateApp(expression.callee, bindingFacts, vueImportRoots)) {
+      const rootComponent = unwrap(expression.arguments?.[0])
+      const rootBinding = rootComponent?.type === 'Identifier' ? resolveImportedBinding(bindingFacts, rootComponent) : undefined
+      const application = applicationFromFactory(
+        file, localName ?? `inline-${expression.range?.[0] ?? applications.length}`, rootComponent, rootBinding
+      )
+      applications.push(application)
+      return application
+    }
+    if (expression.type === 'NewExpression' && liveVueImport(expression.callee) && findVue2Constructor(expression, bindingFacts, vueImportRoots)) {
+      applications.push(applicationFromVue2(
+        file, localName ?? `vue2-inline-${expression.range?.[0] ?? applications.length}`, expression, bindingFacts
+      ))
+      // Vue 2 instances are bootstrap evidence, not plugin constructors.
+      return undefined
+    }
+    const callee = expression.type === 'CallExpression' ? unwrap(expression.callee) : undefined
+    if (callee?.type !== 'MemberExpression') return undefined
+    const receiver = collectReceiver(callee.object, localName)
+    if (receiver === undefined) return undefined
+    const method = memberName(callee)
+    if (method === 'use') {
+      const registration = resolvePluginRegistration(file, expression, bindingFacts, packageImports)
+      if (registration) {
+        if (typeof receiver === 'string') {
+          const plugins = constructorPlugins.get(receiver) ?? []
+          plugins.push(registration)
+          constructorPlugins.set(receiver, plugins)
+        } else {
+          receiver.plugins.push(registration)
+        }
       }
-      if (receiver?.type !== 'Identifier') continue
-      const receiverBinding = resolveImportedBinding(bindingFacts, receiver)
-      if (
-        receiverBinding?.source
-        && vueImportRoots.has(receiverBinding.source)
-        && (receiverBinding.imported === 'default' || receiverBinding.imported === '*')
-      ) {
-        const plugins = constructorPlugins.get(receiverBinding.source) ?? []
-        plugins.push(registration)
-        constructorPlugins.set(receiverBinding.source, plugins)
+    }
+    const vue2 = typeof receiver === 'string'
+    if (!hasKnownVueMethod(method, vue2)) invalidReceivers.add(receiver)
+    return returnsVueReceiver(method, expression.arguments ?? [], vue2, bindingFacts, unavailableBindings) && !invalidReceivers.has(receiver)
+      ? receiver
+      : undefined
+  }
+
+  for (const statement of root.body ?? []) {
+    const variableStatement = statement.type === 'ExportNamedDeclaration' ? statement.declaration : statement
+    if (variableStatement?.type === 'VariableDeclaration') {
+      for (const declaration of variableStatement.declarations ?? []) {
+        if (!declaration.init) continue
+        inspectEffects(declaration.init)
+        const receiver = collectReceiver(declaration.init, declaration.id?.type === 'Identifier' ? declaration.id.name : undefined)
+        const binding = resolveLexicalBinding(bindingFacts, declaration.id)
+        if (binding) receivers.delete(binding)
+        else invalidateTarget(declaration.id, false)
+        if (binding && receiver !== undefined) {
+          if (unavailableBindings.has(binding)) invalidReceivers.add(receiver)
+          else receivers.set(binding, receiver)
+        } else if (declaration.id?.type !== 'Identifier'
+          || ['ObjectExpression', 'ArrayExpression', 'ConditionalExpression', 'LogicalExpression', 'SequenceExpression'].includes(unwrap(declaration.init)?.type ?? '')) {
+          invalidateReferences(declaration.init, false)
+        }
       }
+    } else {
+      inspectEffects(statement)
+      if (statement.type === 'ExpressionStatement') collectReceiver(statement.expression)
     }
   }
 
@@ -262,19 +362,6 @@ function applicationFromFactory(
   }
 }
 
-function findVueFactoryCall(
-  expression: AstNode | undefined,
-  facts: ReturnType<typeof collectScriptBindingFacts>,
-  vueImportRoots: ReadonlySet<string>
-): AstNode | undefined {
-  const current = unwrap(expression)
-  if (!current) return undefined
-  if (current.type === 'CallExpression' && isVue3CreateApp(current.callee, facts, vueImportRoots)) return current
-  const callee = current.type === 'CallExpression' ? unwrap(current.callee) : undefined
-  return callee?.type === 'MemberExpression'
-    ? findVueFactoryCall(callee.object, facts, vueImportRoots)
-    : undefined
-}
 
 function findVue2Constructor(
   expression: AstNode | undefined,
@@ -292,10 +379,7 @@ function findVue2Constructor(
       && vueImportRoots.has(binding.source ?? '')
     ) return current
   }
-  const callee = current.type === 'CallExpression' ? unwrap(current.callee) : undefined
-  return callee?.type === 'MemberExpression'
-    ? findVue2Constructor(callee.object, facts, vueImportRoots)
-    : undefined
+  return undefined
 }
 
 function applicationFromVue2(
@@ -367,29 +451,56 @@ function importedProjectComponent(
     : undefined
 }
 
-function collectTopLevelUseCalls(expression: AstNode | undefined): AstNode[] {
-  const current = unwrap(expression)
-  if (current?.type !== 'CallExpression') return []
-  const calls: AstNode[] = []
-  const callee = unwrap(current.callee)
-  if (callee?.type === 'MemberExpression') calls.push(...collectTopLevelUseCalls(callee.object))
-  if (
-    callee?.type === 'MemberExpression'
-    && !callee.computed
-    && unwrap(callee.property)?.type === 'Identifier'
-    && unwrap(callee.property)?.name === 'use'
-  ) calls.push(current)
-  return calls
+function memberName(member: AstNode): string | undefined {
+  const property = unwrap(member.property)
+  return member.computed
+    ? typeof property?.value === 'string' ? property.value : undefined
+    : property?.name
 }
 
-function ultimateUseReceiver(useCall: AstNode): AstNode | undefined {
-  let receiver = unwrap(unwrap(useCall.callee)?.object)
-  while (receiver?.type === 'CallExpression') {
-    const callee = unwrap(receiver.callee)
-    if (callee?.type !== 'MemberExpression' || unwrap(callee.property)?.name !== 'use') break
-    receiver = unwrap(callee.object)
-  }
-  return receiver
+const knownVue2Methods: Readonly<Record<string, true>> = {
+  use: true, mixin: true, component: true, directive: true, filter: true, extend: true,
+  set: true, delete: true, nextTick: true, observable: true, compile: true
+}
+
+const knownVue3Methods: Readonly<Record<string, true>> = {
+  use: true, mixin: true, provide: true, component: true, directive: true,
+  mount: true, unmount: true, onUnmount: true, runWithContext: true
+}
+
+function hasKnownVueMethod(method: string | undefined, vue2?: boolean): boolean {
+  if (!method) return false
+  if (vue2 === true) return knownVue2Methods[method] === true
+  if (vue2 === false) return knownVue3Methods[method] === true
+  // The effect prepass may precede receiver initialization. Return identity is
+  // checked separately once the receiver is known; $mount belongs to instances.
+  return knownVue2Methods[method] === true || knownVue3Methods[method] === true || method === '$mount'
+}
+
+function returnsVueReceiver(
+  method: string | undefined,
+  args: AstNode[],
+  vue2: boolean,
+  facts: ScriptBindingFacts,
+  unavailableBindings: ReadonlySet<LexicalBindingFact>
+): boolean {
+  if (args.some(argument => argument.type === 'SpreadElement')) return false
+  if (method === 'use') return args.length >= 1
+  if (method === 'mixin') return args.length === 1
+  // Vue 2 asset methods return definitions, and extend returns a subclass.
+  if (vue2) return false
+  if (method === 'provide') return args.length === 2
+  if ((method !== 'component' && method !== 'directive') || args.length !== 2) return false
+  // Getter overloads (including falsy definitions) return a component/directive, not the app.
+  const definition = unwrap(args[1])
+  if (!definition) return false
+  if (['ObjectExpression', 'ArrayExpression', 'FunctionExpression', 'ArrowFunctionExpression', 'ClassExpression'].includes(definition.type ?? '')) return true
+  if (definition.type === 'Literal') return Boolean(definition.value)
+  const binding = resolveLexicalBinding(facts, definition)
+  return Boolean(binding && !unavailableBindings.has(binding) && (
+    binding.kind === 'function' || binding.kind === 'class'
+    || (binding.kind === 'import' && /\.vue(?:$|\?)/i.test(binding.source ?? ''))
+  ))
 }
 
 
@@ -477,8 +588,8 @@ function readGlobImport(node: AstNode): SourceGlobImport | undefined {
   return { patterns: patterns as string[], eager }
 }
 
-function visitAst(node: AstNode, visit: (node: AstNode, parent?: AstNode) => void, parent?: AstNode): void {
-  visit(node, parent)
+function visitAst(node: AstNode, visit: (node: AstNode, parent?: AstNode) => void | boolean, parent?: AstNode): void {
+  if (visit(node, parent) === false) return
   for (const [key, value] of Object.entries(node)) {
     if (['parent', 'loc', 'range', 'tokens', 'comments'].includes(key)) continue
     if (Array.isArray(value)) {

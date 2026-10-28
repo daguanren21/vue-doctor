@@ -1,16 +1,15 @@
-import { access, cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { access } from 'node:fs/promises'
+import { createRequire } from 'node:module'
+import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import {
-  detectInstalledSkillAgents,
-  getSkillAgentTypes,
-  installSkillsFromSource,
-  isSkillAgentType,
-  SKILL_MANIFEST_FILE,
-  type SkillAgentType,
-  type SkillInstallResult
-} from 'agent-install'
+import type { SkillAgentType, SkillInstallResult } from 'agent-install/skill'
+
+const require = createRequire(import.meta.url)
+
+// Keep the optional installer off the diagnostic startup path without making agent listing async.
+function skillInstaller(): typeof import('agent-install/skill') {
+  return require('agent-install/skill')
+}
 
 const DEFAULT_AGENTS: SkillAgentType[] = [
   'claude-code',
@@ -37,10 +36,12 @@ export interface InstallVueDoctorSkillResult {
 }
 
 export function listSupportedSkillAgents(): SkillAgentType[] {
+  const { getSkillAgentTypes } = skillInstaller()
   return getSkillAgentTypes().filter((agent) => agent !== 'universal')
 }
 
 export async function detectAvailableSkillAgents(): Promise<SkillAgentType[]> {
+  const { detectInstalledSkillAgents } = skillInstaller()
   const detected = new Set(await detectInstalledSkillAgents())
   return listSupportedSkillAgents().filter((agent) => detected.has(agent))
 }
@@ -54,6 +55,7 @@ export function resolveInstallAgents(options: {
   const skipped: string[] = []
 
   if (options.requested && options.requested.length > 0) {
+    const { isSkillAgentType } = skillInstaller()
     const agents: SkillAgentType[] = []
     for (const raw of options.requested) {
       const agent = raw.trim().toLowerCase()
@@ -105,6 +107,7 @@ export async function installVueDoctorSkill(
   // agent-install treats cwd as the project root for project-local installs.
   // For --global, install into each agent home by using process.cwd only as
   // a fallback and letting agent-install resolve global dirs via agent type.
+  const { installSkillsFromSource } = skillInstaller()
   const result = await installSkillsFromSource({
     source,
     agents,
@@ -128,28 +131,13 @@ export async function resolveSkillSourceDirectory(explicit?: string): Promise<st
     return path
   }
 
-  const here = dirname(fileURLToPath(import.meta.url))
-  const candidates = [
-    // Published package layout: dist/skills/vue-doctor
-    resolve(here, 'skills/vue-doctor'),
-    resolve(here, '../skills/vue-doctor'),
-    // Monorepo development layout: <repo>/skills/vue-doctor
-    resolve(here, '../../../skills/vue-doctor'),
-    resolve(here, '../../../../skills/vue-doctor')
-  ]
-
-  for (const candidate of candidates) {
-    if (await pathExists(join(candidate, SKILL_MANIFEST_FILE))) {
-      return candidate
-    }
-  }
-
-  throw new Error(
-    'Bundled Vue Doctor skill was not found. Ensure the package was built with skills included.'
-  )
+  const source = fileURLToPath(new URL('../skills/vue-doctor/', import.meta.url))
+  await assertSkillSource(source)
+  return source
 }
 
 async function assertSkillSource(path: string): Promise<void> {
+  const { SKILL_MANIFEST_FILE } = skillInstaller()
   if (!(await pathExists(join(path, SKILL_MANIFEST_FILE)))) {
     throw new Error(`Skill source is missing ${SKILL_MANIFEST_FILE}: ${path}`)
   }
@@ -168,11 +156,3 @@ function uniqueAgents(agents: SkillAgentType[]): SkillAgentType[] {
   return [...new Set(agents)]
 }
 
-/**
- * Copy the repository skill tree into the package dist so published installs
- * can find it next to the CLI bundle.
- */
-export async function materializeBundledSkillForTests(targetDir: string, sourceDir: string): Promise<void> {
-  await mkdir(targetDir, { recursive: true })
-  await cp(sourceDir, targetDir, { recursive: true })
-}

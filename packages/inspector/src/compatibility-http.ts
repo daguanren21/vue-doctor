@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import type { DoctorReport } from '@vue-doctor/core'
+import type { DoctorReport } from '@daguanren21/vue-doctor-core'
 import {
   EditorOpenError,
   formatEditorLaunchError,

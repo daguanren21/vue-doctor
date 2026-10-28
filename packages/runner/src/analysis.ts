@@ -3,8 +3,8 @@ import {
   type ComponentContract,
   type ComponentContractMap,
   type ComponentLibraryEvidence
-} from '@vue-doctor/component-library'
-import { resolveVueVersion } from '@vue-doctor/core'
+} from '@daguanren21/vue-doctor-component-library'
+import { resolveVueVersion } from '@daguanren21/vue-doctor-core'
 import type {
   ComponentOwnership,
   ComponentLibraryCoverage,
@@ -14,13 +14,14 @@ import type {
   DoctorCoverage,
   ProjectContext,
   ProjectContextIssue
-} from '@vue-doctor/core'
+} from '@daguanren21/vue-doctor-core'
 import {
   classifyComponentPropSupport,
   isComponentEventListener,
   type ComponentUsageContractMatch
-} from '@vue-doctor/rule-pack-component-library'
-import type { VueComponentUsage, VueSourceUsageReport } from '@vue-doctor/source'
+} from '@daguanren21/vue-doctor-rule-pack-component-library'
+import type { VueComponentUsage, VueSourceUsageReport } from '@daguanren21/vue-doctor-source'
+import { isFrameworkComponentUsage } from './framework-components.js'
 
 export interface AnalyzeComponentLibrariesOptions {
   source: VueSourceUsageReport
@@ -79,6 +80,10 @@ export async function analyzeComponentLibraries(
   const ownership: ComponentOwnership[] = []
 
   for (const usage of options.source.components) {
+    if (isFrameworkComponentUsage(usage, options.projectContext)) {
+      ownership.push({ status: 'unmatched', candidates: [] })
+      continue
+    }
     const scopedCandidates = candidatesForUsage(usage, candidates, options.projectContext)
     const decision = chooseLibrary(usage, scopedCandidates, pluginsForUsage(usage, options.source.globalPlugins))
 

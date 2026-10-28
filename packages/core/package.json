@@ -1,8 +1,12 @@
 {
-  "name": "@vue-doctor/core",
-  "version": "0.0.0",
+  "name": "@daguanren21/vue-doctor-core",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
   "type": "module",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "engines": {
     "node": ">=20.19.0"
   },
@@ -21,7 +25,7 @@
     }
   },
   "dependencies": {
-    "@vue-doctor/source": "workspace:*",
+    "@daguanren21/vue-doctor-source": "workspace:*",
     "jiti": "2.7.0",
     "semver": "7.8.5"
   },

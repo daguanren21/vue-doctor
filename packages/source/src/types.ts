@@ -228,6 +228,8 @@ export interface VueComponentOrigin {
   importedName?: string
   /** Original static import specifier, including project-local aliases. */
   importSource?: string
+  /** Proven template exposure, not merely a matching import elsewhere in the script. */
+  templateBinding?: 'script-setup' | 'components-option'
 }
 
 export interface VueGlobalPluginUsage {

@@ -1,5 +1,5 @@
 import { computed, reactive, ref, type Ref } from 'vue'
-import type { Diagnostic, DoctorReport, DiagnosticSeverity } from '@vue-doctor/core'
+import type { Diagnostic, DoctorReport, DiagnosticSeverity } from '@daguanren21/vue-doctor-core'
 import {
   categoryForDiagnostic,
   compareDiagnostics,

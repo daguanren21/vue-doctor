@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { ref } from 'vue'
-import type { Diagnostic, DoctorReport } from '@vue-doctor/core'
+import type { Diagnostic, DoctorReport } from '@daguanren21/vue-doctor-core'
 import { useInspectorFilters } from './useInspectorFilters'
 
 function diagnostic(overrides: Partial<Diagnostic> = {}): Diagnostic {

@@ -6,8 +6,8 @@ import type {
   DiagnosticPrimaryLocation,
   DoctorReport,
   DoctorSuppressionAudit
-} from '@vue-doctor/core'
-import type { SourceSuppressionDirective, SourceSuppressionScan } from '@vue-doctor/source'
+} from '@daguanren21/vue-doctor-core'
+import type { SourceSuppressionDirective, SourceSuppressionScan } from '@daguanren21/vue-doctor-source'
 
 export interface DoctorReportTargetFacts {
   root: string

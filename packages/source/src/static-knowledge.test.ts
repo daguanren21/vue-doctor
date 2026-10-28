@@ -122,6 +122,157 @@ describe('opt-in static lexical evidence', () => {
     expect(prop?.staticValue).toBeUndefined()
   })
 
+  test.each([
+    "for (rules.trigger of ['change']) {}",
+    "for (rules.trigger in { change: true }) {}",
+    "for ([rules.trigger] of [['change']]) {}",
+    "for ({ trigger: rules.trigger } of [{ trigger: 'change' }]) {}",
+    "for ({ ...rules.trigger } of [{ change: true }]) {}",
+    "const alias = rules; for (alias.trigger of ['change']) {}",
+    "let alias = rules; for (alias in { change: true }) {}"
+  ])('invalidates assignment-form loop targets and their aliases: %s', (loop) => {
+    const [prop] = props(`const rules = { trigger: 'blur' }; ${loop}`)
+    expect(prop?.staticValue).toBeUndefined()
+    expect(prop?.staticEvidence).toEqual({ complete: false })
+  })
+
+  test.each([
+    "for (const trigger of ['change']) {}",
+    "for (let trigger in { change: true }) {}",
+    "for (const [trigger] of [['change']]) {}",
+    "for (const { trigger } of [{ trigger: 'change' }]) {}",
+    "let other; for (other of ['change']) {}"
+  ])('preserves unrelated constants around declaration-form loops: %s', (loop) => {
+    expect(props(`const rules = { trigger: 'blur' }; ${loop}`)[0]?.staticValue)
+      .toEqual({ trigger: 'blur' })
+  })
+
+  test.each([
+    "let rule; for (rule of [rules]) { rule.trigger = 'change' }",
+    "for (const rule of [rules]) { rule.trigger = 'change' }",
+    "for (let rule of [rules]) { rule.trigger = 'change' }",
+    "for (var rule of [rules]) { rule.trigger = 'change' }",
+    "let rule; for (rule of [rules]) {} rule.trigger = 'change'",
+    "const entries = [rules]; for (const rule of entries) { rule.trigger = 'change' }",
+    "for (const [rule] of [[rules]]) { rule.trigger = 'change' }",
+    "let rule; for ([rule] of [[rules]]) { rule.trigger = 'change' }",
+    "for (const { value: rule } of [{ value: rules }]) { rule.trigger = 'change' }",
+    "let rule; for ({ value: rule } of [{ value: rules }]) { rule.trigger = 'change' }",
+    "for (const group of [[rules]]) { for (const rule of group) { rule.trigger = 'change' } }",
+    "for (const rule of [rules]) { const alias = rule; alias.trigger = 'change' }",
+    "for (const rule of [rules]) { let alias; alias = rule; mutate(alias) }",
+    "for (const rule of [rules]) { mutate(rule) }",
+    "for (const rule of [rules]) { delete rule.trigger }",
+    "for (const rule of [rules]) { rule.count++ }",
+    "for (const rule of [rules]) { external.rule = rule }",
+    "const holder = {}; for (holder.rule of [rules]) {}",
+    "function expose() { for (const rule of [rules]) { return rule } }",
+    "for (const rule of [rules]) { callbacks.push(() => { rule.trigger = 'change' }) }"
+  ])('invalidates iteration-source objects only after alias mutation or escape: %s', (loop) => {
+    const [prop] = props(`const rules = { trigger: 'blur' }; ${loop}`)
+    expect(prop?.staticValue).toBeUndefined()
+    expect(prop?.staticEvidence).toEqual({ complete: false })
+  })
+
+  test.each([
+    "for (const rule of [rules]) { rule.trigger }",
+    "for (var rule of [rules]) { rule.trigger }",
+    "let rule; for (rule of [rules]) { const trigger = rule.trigger }",
+    "let rule; for (rule of [rules]) {} rule = { trigger: 'change' }",
+    "for (let rule of [rules]) { rule = { trigger: 'change' } }",
+    "for (const { trigger } of [rules]) { trigger }",
+    "for (const rule of [rules]) { const alias = rule; alias.trigger }",
+    "for (const rule of [rules]) { function inspect(rule) { mutate(rule) } }",
+    "for (const rule of [rules]) { { const rule = {}; mutate(rule) } }",
+    "let rule = other; for (const rule of [rules]) { rule.trigger } mutate(rule)",
+    "for (const key in rules) { consume(key) }",
+    "for (const rule of [other]) { rule.trigger = 'change' }",
+    "let rule; for (rule of [other]) { rule.trigger = 'change' }"
+  ])('preserves nonmutating and unrelated iteration-source objects: %s', (loop) => {
+    expect(props(`const rules = { trigger: 'blur' }; ${loop}`)[0]?.staticValue)
+      .toEqual({ trigger: 'blur' })
+  })
+
+  test.each([
+    '<ElForm :rules="rules" @click="rule.trigger = next" />',
+    '<ElForm :rules="rules" @click="mutate(rule)" />',
+    '<ElForm :rules="rules"><ElInput v-model="rule.trigger" /></ElForm>'
+  ])('invalidates retained iteration aliases mutated by template handlers: %s', (template) => {
+    const [prop] = props("const rules = { trigger: 'blur' }; let rule; for (rule of [rules]) {}", 'rules', template)
+    expect(prop?.staticValue).toBeUndefined()
+    expect(prop?.staticEvidence).toEqual({ complete: false })
+  })
+
+  test.each([
+    "for (this.rules.trigger of ['change']) {}",
+    "for (this.rules.trigger in { change: true }) {}",
+    "for ([this.rules.trigger] of [['change']]) {}",
+    "for ({ trigger: this.rules.trigger } of [{ trigger: 'change' }]) {}",
+    "for (this.alias.trigger of ['change']) {}"
+  ])('invalidates Options API loop writes and shared returned aliases: %s', (loop) => {
+    const source = `<script>export default {
+      data() { const shared = { trigger: 'blur' }; return { rules: shared, alias: shared, stable: 7 } },
+      methods: { change() { ${loop} } }
+    }</script><template><ElForm :rules="rules" :stable="stable" /></template>`
+    const result = analyzeSourceText('/fixture.vue', source, { resolveConstants: true })
+    expect(result.components[0]?.props[0]?.staticValue).toBeUndefined()
+    expect(result.components[0]?.props[0]?.staticEvidence).toEqual({ complete: false })
+    expect(result.components[0]?.props[1]?.staticValue).toBe(7)
+  })
+
+  test.each([
+    "for (const rule of [this.rules]) { rule.trigger = 'change' }",
+    "let rule; for (rule of [this.rules]) { rule.trigger = 'change' }",
+    "for (var rule of [this.rules]) {} rule.trigger = 'change'",
+    "for (const [rule] of [[this.rules]]) { rule.trigger = 'change' }",
+    "let rule; for ({ value: rule } of [{ value: this.rules }]) { rule.trigger = 'change' }",
+    "for (const rule of [this['rules']]) { rule.trigger = 'change' }",
+    "for (const group of [[this.rules]]) { for (const rule of group) { rule.trigger = 'change' } }",
+    "for (const rule of [this.rules]) { const alias = rule; alias.trigger = 'change' }",
+    "for (const rule of [this.rules]) { mutate(rule) }",
+    "for (const rule of [this.rules]) { external.rule = rule }",
+    "const holder = {}; for (holder.rule of [this.rules]) {}",
+    "for (const rule of [this.rules]) { return rule }"
+  ])('invalidates Options instance sources mutated or escaped through iteration aliases: %s', (loop) => {
+    const source = `<script>export default {
+      data() { return { rules: { trigger: 'blur' }, stable: 7 } },
+      methods: { change() { ${loop} } }
+    }</script><template><ElForm :rules="rules" :stable="stable" /></template>`
+    const result = analyzeSourceText('/fixture.vue', source, { resolveConstants: true })
+    expect(result.components[0]?.props[0]?.staticValue).toBeUndefined()
+    expect(result.components[0]?.props[0]?.staticEvidence).toEqual({ complete: false })
+    expect(result.components[0]?.props[1]?.staticValue).toBe(7)
+  })
+
+  test.each([
+    "for (const rule of [this.rules]) { rule.trigger }",
+    "let rule; for (rule of [this.rules]) { const trigger = rule.trigger }",
+    "for (let rule of [this.rules]) { rule = {} }",
+    "for (const rule of [this.rules]) { const alias = rule; alias.trigger }",
+    "for (const rule of [this.rules]) { function inspect(rule) { mutate(rule) } }",
+    "for (const rule of [this.rules]) { { const rule = {}; mutate(rule) } }",
+    "for (const key in this.rules) { consume(key) }",
+    "for (const rule of [other]) { rule.trigger = 'change' }"
+  ])('preserves Options instance evidence around nonmutating and unrelated loops: %s', (loop) => {
+    const source = `<script>export default {
+      data() { return { rules: { trigger: 'blur' }, stable: 7 } },
+      methods: { inspect() { ${loop} } }
+    }</script><template><ElForm :rules="rules" :stable="stable" /></template>`
+    const result = analyzeSourceText('/fixture.vue', source, { resolveConstants: true })
+    expect(result.components[0]?.props[0]?.staticValue).toEqual({ trigger: 'blur' })
+    expect(result.components[0]?.props[1]?.staticValue).toBe(7)
+  })
+
+  test('invalidates shared Options objects through an iterated sibling field', () => {
+    const source = `<script>export default {
+      data() { const shared = { trigger: 'blur' }; return { rules: shared, alias: shared, stable: 7 } },
+      methods: { change() { for (const rule of [this.alias]) { rule.trigger = 'change' } } }
+    }</script><template><ElForm :rules="rules" :stable="stable" /></template>`
+    const result = analyzeSourceText('/fixture.vue', source, { resolveConstants: true })
+    expect(result.components[0]?.props[0]?.staticEvidence).toEqual({ complete: false })
+    expect(result.components[0]?.props[1]?.staticValue).toBe(7)
+  })
+
   test('does not resolve template loop/slot shadows or event-mutated constants', () => {
     const loop = props("const rules = 'blur'", 'rules', '<div v-for="rules in rows"><ElForm :rules="rules" /></div>')
     expect(loop[0]?.staticValue).toBeUndefined()

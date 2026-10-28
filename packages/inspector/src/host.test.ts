@@ -4,10 +4,10 @@ import { createServer } from 'node:http'
 import { once } from 'node:events'
 import { fileURLToPath } from 'node:url'
 import { createUi } from '@devframes/hub-ui'
-import type { DoctorReport } from '@vue-doctor/core'
+import type { DoctorReport } from '@daguanren21/vue-doctor-core'
 import { createInspectorBackend, createInspectorHost } from './host.js'
 
-const inspectorClientAssets = fileURLToPath(new URL('../../inspector-ui/dist/', import.meta.url))
+const inspectorClientAssets = fileURLToPath(new URL('../../inspector-ui/dist/inspector-client/', import.meta.url))
 const readClientAsset = async (name: string) => name === 'favicon.svg'
   ? { body: '<svg data-fixture="doctor" />', contentType: 'image/svg+xml' }
   : undefined

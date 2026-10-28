@@ -1,24 +1,19 @@
 import { Server } from 'node:http'
 import type { Plugin, ResolvedConfig } from 'vite'
-import { createInspectorBackend, createInspectorHost, type InspectorBackend, type InspectorHost } from '@vue-doctor/inspector/host'
-import { createInspectorHubUi, inspectorClientAssets, readInspectorAsset } from '@vue-doctor/inspector-ui/assets'
-import { disposeVueDoctorDevframeMount } from '@vue-doctor/inspector/devframe'
-import type { runDoctor } from '@vue-doctor/runner'
-import type { ComponentLibraryCoverage, Diagnostic, DoctorConfig, DoctorReport, DoctorRunOptions } from '@vue-doctor/core'
+import { createInspectorBackend, createInspectorHost, type InspectorBackend, type InspectorHost } from '@daguanren21/vue-doctor-inspector/host'
+import { createInspectorHubUi, inspectorClientAssets, readInspectorAsset } from '@daguanren21/vue-doctor-inspector-ui/assets'
+import { disposeVueDoctorDevframeMount } from '@daguanren21/vue-doctor-inspector/devframe'
+import type { runDoctor } from '@daguanren21/vue-doctor-runner'
+import type { ComponentLibraryCoverage, Diagnostic, DoctorReport, DoctorRunOptions } from '@daguanren21/vue-doctor-core'
 import { createHostDoctorSession, type HostDoctorAnalysisSession } from './session.js'
+import type { VueDoctorViteOptions } from './options.js'
+
+export type { VueDoctorRunMode, VueDoctorViteOptions } from './options.js'
 
 export const inspectorBasePath = '/vue-doctor/'
 export const inspectorReportPath = '/vue-doctor/api/report.json'
 export const inspectorOpenPath = '/vue-doctor/api/open'
 export const inspectorSnippetPath = '/vue-doctor/api/snippet'
-export type VueDoctorRunMode = 'serve' | 'build' | 'both'
-export interface VueDoctorViteOptions {
-  run?: VueDoctorRunMode
-  mode?: 'warn'
-  inspector?: boolean
-  scope?: DoctorRunOptions['scope']
-  config?: DoctorConfig
-}
 export interface VueDoctorViteServices {
   runDoctor: typeof runDoctor
   createAnalysisSession?: (options: DoctorRunOptions) => HostDoctorAnalysisSession

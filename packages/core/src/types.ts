@@ -1,6 +1,6 @@
 import type { DoctorRuleCheck, DoctorRulePack, DoctorRulePackReport } from './rule-packs.js'
 import type { DoctorDiagnosticDomain, DoctorDomainCoverage } from './domains.js'
-import type { SourceDiscoveryIssue } from '@vue-doctor/source'
+import type { SourceDiscoveryIssue } from '@daguanren21/vue-doctor-source'
 
 export type DiagnosticSeverity = 'info' | 'warning' | 'error'
 

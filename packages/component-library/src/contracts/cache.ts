@@ -1,13 +1,13 @@
 import { lstat, readFile, readdir, realpath } from 'node:fs/promises'
 import { relative, sep } from 'node:path'
 import { deserialize, serialize } from 'node:v8'
-import { version as typeScriptVersion } from 'typescript'
+import { version as typeScriptVersion } from 'typescript-native'
 import {
   createVueDoctorCacheKey,
   readVueDoctorCache,
   removeVueDoctorCache,
   writeVueDoctorCache
-} from '@vue-doctor/core'
+} from '@daguanren21/vue-doctor-core'
 import type { ComponentLibraryEvidence, EvidenceFile } from '../types.js'
 import type {
   ComponentContractMap,
@@ -15,7 +15,7 @@ import type {
 } from './types.js'
 
 const contractCacheNamespace = 'contracts-v2'
-const contractAnalyzerVersion = '6'
+const contractAnalyzerVersion = '8'
 const contractCacheFormat = 2
 const maxManifestDependencies = 4096
 
@@ -88,6 +88,7 @@ export async function readContractCache(
       payload?.format !== contractCacheFormat
       || !payload.manifest
       || !Array.isArray(payload.manifest.dependencies)
+      || !isComponentContractMap(payload.contracts)
       || !await validateManifest(payload.manifest)
     ) {
       await removeVueDoctorCache(contractCacheNamespace, key, cacheDirectory)
@@ -119,6 +120,145 @@ export async function writeContractCache(
     serialize(payload),
     cacheDirectory
   )
+}
+
+function isComponentContractMap(value: unknown): value is ComponentContractMap {
+  return value !== null && typeof value === 'object'
+    && 'components' in value && isEntries(value.components, isComponentContract)
+    && 'sources' in value && isArrayOf(value.sources, isProvenance)
+    && 'problems' in value && isArrayOf(value.problems, (problem) => (
+      problem !== null && typeof problem === 'object' && !Array.isArray(problem)
+      && 'message' in problem && typeof problem.message === 'string'
+      && (!('path' in problem) || problem.path === undefined || typeof problem.path === 'string')
+    ))
+}
+
+function isComponentContract(value: unknown): boolean {
+  if (value === null || typeof value !== 'object'
+    || !('fallthrough' in value) || value.fallthrough === null || typeof value.fallthrough !== 'object') return false
+  const fallthrough = value.fallthrough
+  return 'name' in value && typeof value.name === 'string'
+    && 'aliases' in value && isStringArray(value.aliases)
+    && 'props' in value && isDimension(value.props, isPropContract)
+    && 'events' in value && isDimension(value.events, isEventContract)
+    && 'slots' in value && isDimension(value.slots, (slot) => (
+      slot !== null && typeof slot === 'object' && 'name' in slot && typeof slot.name === 'string'
+    ))
+    && 'attributes' in fallthrough && isAcceptance(fallthrough.attributes)
+    && 'listeners' in fallthrough && isAcceptance(fallthrough.listeners)
+    && (!('attributeTargets' in fallthrough) || fallthrough.attributeTargets === undefined || isArrayOf(fallthrough.attributeTargets, (target) => (
+      target !== null && typeof target === 'object' && !Array.isArray(target)
+      && 'kind' in target && (target.kind === 'component' || target.kind === 'element')
+      && 'name' in target && typeof target.name === 'string'
+      && 'file' in target && typeof target.file === 'string'
+      && (!('excludedAttributes' in target) || target.excludedAttributes === undefined || isStringArray(target.excludedAttributes))
+      && (!('supportedAttributes' in target) || target.supportedAttributes === undefined || isStringArray(target.supportedAttributes))
+    )))
+    && (!('vue2Model' in value) || value.vue2Model === undefined || value.vue2Model === null || (
+      typeof value.vue2Model === 'object'
+      && 'prop' in value.vue2Model && typeof value.vue2Model.prop === 'string'
+      && 'event' in value.vue2Model && typeof value.vue2Model.event === 'string'
+    ))
+    && 'sources' in value && isArrayOf(value.sources, isProvenance)
+}
+
+function isDimension(value: unknown, isEntry: (value: unknown) => boolean): boolean {
+  return value !== null && typeof value === 'object'
+    && 'knowledge' in value && (value.knowledge === 'known' || value.knowledge === 'partial' || value.knowledge === 'unknown')
+    && 'acceptance' in value && isAcceptance(value.acceptance)
+    && 'entries' in value && isEntries(value.entries, isEntry)
+    && 'issues' in value && isArrayOf(value.issues, (issue) => (
+      issue !== null && typeof issue === 'object' && !Array.isArray(issue)
+      && 'code' in issue && typeof issue.code === 'string'
+      && 'message' in issue && typeof issue.message === 'string'
+      && (!('artifact' in issue) || issue.artifact === undefined || typeof issue.artifact === 'string')
+    ))
+}
+
+function isEntries(value: unknown, isEntry: (value: unknown) => boolean): boolean {
+  if (!(value instanceof Map)) return false
+  for (const [key, entry] of value) {
+    if (typeof key !== 'string' || !isEntry(entry)) return false
+  }
+  return true
+}
+
+function isPropContract(value: unknown): boolean {
+  return value !== null && typeof value === 'object'
+    && 'name' in value && typeof value.name === 'string'
+    && (!('required' in value) || value.required === undefined || typeof value.required === 'boolean')
+    && (!('types' in value) || value.types === undefined || isArrayOf(value.types, isPropType))
+}
+
+function isPropType(value: unknown): boolean {
+  if (value === null || typeof value !== 'object' || !('kind' in value)) return false
+  switch (value.kind) {
+    case 'string':
+    case 'number':
+    case 'boolean':
+    case 'object':
+    case 'array':
+    case 'function':
+    case 'symbol':
+    case 'bigint':
+    case 'any':
+    case 'unknown':
+    case 'null':
+      return !('value' in value) || value.value === undefined
+        || typeof value.value === 'string'
+        || typeof value.value === 'number'
+        || typeof value.value === 'boolean'
+    case 'literal':
+      return 'value' in value && (typeof value.value === 'string'
+        || typeof value.value === 'boolean'
+        || (typeof value.value === 'number' && Number.isFinite(value.value)))
+    default:
+      return false
+  }
+}
+
+function isEventContract(value: unknown): boolean {
+  return value !== null && typeof value === 'object'
+    && 'name' in value && typeof value.name === 'string'
+    && 'source' in value && (value.source === 'emit' || value.source === 'listener-prop' || value.source === 'metadata')
+    && 'signatures' in value && isArrayOf(value.signatures, (signature) => (
+      signature !== null && typeof signature === 'object' && !Array.isArray(signature)
+      && 'minArity' in signature && typeof signature.minArity === 'number'
+      && Number.isInteger(signature.minArity) && signature.minArity >= 0
+      && 'maxArity' in signature && (signature.maxArity === null || (
+        typeof signature.maxArity === 'number' && Number.isInteger(signature.maxArity) && signature.maxArity >= 0
+      ))
+      && 'parameters' in signature && isArrayOf(signature.parameters, (parameter) => (
+        parameter !== null && typeof parameter === 'object' && !Array.isArray(parameter)
+        && (!('name' in parameter) || parameter.name === undefined || typeof parameter.name === 'string')
+        && 'optional' in parameter && typeof parameter.optional === 'boolean'
+        && 'rest' in parameter && typeof parameter.rest === 'boolean'
+      ))
+    ))
+}
+
+function isProvenance(value: unknown): boolean {
+  return value !== null && typeof value === 'object'
+    && 'source' in value && (value.source === 'adapter' || value.source === 'web-types' || value.source === 'vetur-tags'
+      || value.source === 'vetur-attributes' || value.source === 'typescript' || value.source === 'runtime')
+    && 'path' in value && typeof value.path === 'string'
+    && 'relativePath' in value && typeof value.relativePath === 'string'
+}
+
+function isArrayOf(value: unknown, isItem: (item: unknown) => boolean): boolean {
+  if (!Array.isArray(value)) return false
+  for (let index = 0; index < value.length; index++) {
+    if (!Object.hasOwn(value, index) || !isItem(value[index])) return false
+  }
+  return true
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return isArrayOf(value, (item) => typeof item === 'string')
+}
+
+function isAcceptance(value: unknown): value is 'closed' | 'open' | 'unknown' {
+  return value === 'closed' || value === 'open' || value === 'unknown'
 }
 
 async function readReliablePackageIdentity(

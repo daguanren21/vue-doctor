@@ -1,5 +1,27 @@
 packages:
   - packages/*
+  - '!packages/rule-pack-company'
+
+allowBuilds:
+  '@parcel/watcher': true
+  esbuild: true
+
+minimumReleaseAgeExclude:
+  - '@icebreakers/commitlint-config@4.1.3'
+  - '@icebreakers/eslint-config@8.0.10'
+  - '@icebreakers/monorepo-templates@3.1.2'
+  - '@icebreakers/monorepo@6.3.0'
+  - '@icebreakers/stylelint-config@5.1.4'
+  - postcss-tailwindcss@3.1.4
+  - repoctl@6.3.0
+  - stylelint-plugin-tailwindcss@3.1.4
 
 overrides:
   'typescript@<7': $typescript
+
+patchedDependencies:
+  '@icebreakers/monorepo@6.3.0': patches/@icebreakers__monorepo@6.3.0.patch
+
+versioning:
+  changelog:
+    storage: repository

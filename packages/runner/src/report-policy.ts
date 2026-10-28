@@ -1,4 +1,4 @@
-import type { DoctorReport, ReportSummary, SkippedCheck } from '@vue-doctor/core'
+import type { DoctorReport, ReportSummary, SkippedCheck } from '@daguanren21/vue-doctor-core'
 
 export function summarizeDoctorReport(report: DoctorReport): ReportSummary {
   const skippedChecks = report.skippedChecks ?? []

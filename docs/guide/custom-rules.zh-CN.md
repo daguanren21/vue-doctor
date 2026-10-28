@@ -4,10 +4,10 @@
 
 ## 定义并导出规则包
 
-下面两个文件组成可运行的本地规则包。项目可以解析 `vue-doctor` 后，将规则模块保存为 `doctor-rules.ts`。从公开入口 `vue-doctor/rules` 导入编写 API；这个 Oxc 示例不需要内部包路径或额外安装解析器。
+下面两个文件组成可运行的本地规则包。项目可以解析 `@daguanren21/vue-doctor` 后，将规则模块保存为 `doctor-rules.ts`。从公开入口 `@daguanren21/vue-doctor/rules` 导入编写 API；这个 Oxc 示例不需要内部包路径或额外安装解析器。
 
 ```ts
-import { defineRule, defineRules, oxcRule } from 'vue-doctor/rules'
+import { defineRule, defineRules, oxcRule } from '@daguanren21/vue-doctor/rules'
 
 export const teamRules = defineRules({
   name: 'team',
@@ -57,7 +57,7 @@ export const teamRules = defineRules({
 在模块旁边保存可执行配置 `doctor.config.ts`：
 
 ```ts
-import { defineDoctorConfig } from 'vue-doctor'
+import { defineDoctorConfig } from '@daguanren21/vue-doctor'
 import { teamRules } from './doctor-rules.ts'
 
 export default defineDoctorConfig({
@@ -71,7 +71,9 @@ export default defineDoctorConfig({
 
 `defineRule` 定义单条检查，`oxcRule` 提供脚本 AST visitor，`defineRules` 将它们组合成一个导出的规则包。规则包名与对象 key 生成完整 code `team/no-var` 和 `team/no-debugger`。在 `rules` 中用完整 code 设置 `error`、`warning`、`info` 或 `off`。自定义规则接入已有规则目录、局部抑制审计和覆盖率门禁。`config.rules` 中出现未注册的 code 会直接报配置错误，即使严重度设为 `off` 也一样。
 
-跨项目共享时，从自建包的公开入口导出 `teamRules`，消费项目在配置中导入该导出，替代相对路径模块。消费项目需要可以解析 `vue-doctor`；可复用规则包应将兼容版本的 `vue-doctor` 声明为 peer dependency。使用公开的 `vue-doctor/rules` 入口，不依赖工作区源码路径。Doctor 不会安装或下载规则包，项目必须已经能够解析对应包。
+`defineRules` 会自动记录执行证据。如果直接实现 `DoctorRulePack.run`，应为每条已启用规则返回对应的 `checks` 记录。缺少执行证据会使覆盖不完整，只有空 `diagnostics` 不能证明运行 clean。已声明的人工、运行时或规范待定验证在明确完成之前仍保持待验收状态。
+
+跨项目共享时，从自建包的公开入口导出 `teamRules`，消费项目在配置中导入该导出，替代相对路径模块。消费项目需要可以解析 `@daguanren21/vue-doctor`；可复用规则包应将兼容版本的 `@daguanren21/vue-doctor` 声明为 peer dependency。使用公开的 `@daguanren21/vue-doctor/rules` 入口，不依赖工作区源码路径。Doctor 不会安装或下载规则包，项目必须已经能够解析对应包。
 
 配置与导入的规则包属于受信任的可执行代码，JSON 配置不能导入执行函数。每个导入的规则包都必须放入 `rulePacks`，仅 import 不会启用。API 内联传入的 `rulePacks` 替换文件配置列表，传 `[]` 可禁用外部规则包。
 
@@ -106,11 +108,11 @@ pnpm exec vue-doctor rules explain team/no-debugger --config ./doctor.config.ts
 
 规则元数据还可以通过 `meta.requires` 声明源代码块和 Vue 版本证据要求。脚本适配器无法提供组件归属和契约证据，相关要求会产生必需跳过记录。声明为 `manual`、`runtime` 或 `policy-pending` 的规则保留对应验证状态，AST 遍历不会完成这些验收检查。
 
-需要 ESLint selector、注释、词法 scope、Vue template parser services 或项目类型信息时，从 `vue-doctor/rules-eslint` 使用 ESTree 适配器：
+需要 ESLint selector、注释、词法 scope、Vue template parser services 或项目类型信息时，从 `@daguanren21/vue-doctor/rules-eslint` 使用 ESTree 适配器：
 
 ```ts
-import { defineRule, defineRules } from 'vue-doctor/rules'
-import { estreeRule } from 'vue-doctor/rules-eslint'
+import { defineRule, defineRules } from '@daguanren21/vue-doctor/rules'
+import { estreeRule } from '@daguanren21/vue-doctor/rules-eslint'
 
 const teamRules = defineRules({
   name: 'team',
@@ -132,6 +134,6 @@ const teamRules = defineRules({
 })
 ```
 
-`eslintRule({ module, options, typed: true })` 可接入官方 RuleModule 或需要类型的检查；类型检查必须有消费项目的 `tsconfig.json` 或 `jsconfig.json`，并使用真实的 TypeScript program 和节点映射。Vue 模板服务使用 `vue-eslint-parser` AST；SFC 描述与脚本原文由 Vue compiler-sfc 提取。这个路径支持现有 Node 20 基线及 Vue 2.7／3。
+`eslintRule({ module, options, typed: true })` 可接入官方 RuleModule 或需要类型的检查；类型检查必须有消费项目的 `tsconfig.json` 或 `jsconfig.json`，并使用真实的 TypeScript program 和节点映射。Vue 模板服务使用 `vue-eslint-parser` AST；SFC 描述与脚本原文由 Vue compiler-sfc 提取。单包运行时要求 Node 22.18+ 或 24.11+，保留 Vue 2.7／3 支持。
 
 同一个 ESLint engine 在一次运行中批量执行独立规则，每个文件最多一轮普通检查和一轮类型检查。ESTree 规则共享该轮解析上下文，应该只读 AST；Oxc／Babel 的每条规则仍使用独立 AST 副本。更特殊的图分析、原始字节或其他解析器可以用 `defineRuleEngine` 与 `engineRule` 接入同一个 `defineRules`：每条规则仍要返回独立的执行记录，异常、缺失记录或非法结果会留下必需跳过记录。

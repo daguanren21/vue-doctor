@@ -1,6 +1,8 @@
 {
-  "name": "@vue-doctor/inspector-ui",
-  "version": "0.0.0",
+  "name": "@daguanren21/vue-doctor-inspector-ui",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -8,12 +10,12 @@
     "typecheck": "vue-tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@daguanren21/vue-doctor-core": "workspace:*",
+    "@daguanren21/vue-doctor-inspector-protocol": "workspace:*",
     "@devframes/hub": "1.2.1",
     "@devframes/hub-ui": "1.2.1",
     "@iconify-icons/lucide": "^2.0.16",
     "@iconify/vue": "^5.0.0",
-    "@vue-doctor/core": "workspace:*",
-    "@vue-doctor/inspector-protocol": "workspace:*",
     "clsx": "^2.1.1",
     "devframe": "1.2.1",
     "reka-ui": "2.11.0",
@@ -31,19 +33,15 @@
   },
   "exports": {
     "./assets": {
-      "types": "./assets.d.mts",
-      "import": "./assets.mjs"
+      "types": "./dist/assets.d.mts",
+      "import": "./dist/assets.mjs"
     },
     "./html": {
-      "types": "./html.d.mts",
-      "import": "./html.mjs"
+      "types": "./dist/html.d.mts",
+      "import": "./dist/html.mjs"
     }
   },
   "files": [
-    "dist",
-    "assets.mjs",
-    "assets.d.mts",
-    "html.mjs",
-    "html.d.mts"
+    "dist"
   ]
 }

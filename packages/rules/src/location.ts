@@ -1,5 +1,5 @@
-import type { EvidenceLocation } from '@vue-doctor/core'
-import type { SourceDocument, SourceDocumentBlock } from '@vue-doctor/source'
+import type { EvidenceLocation } from '@daguanren21/vue-doctor-core'
+import type { SourceDocument, SourceDocumentBlock } from '@daguanren21/vue-doctor-source'
 import type {
   RuleSourceLocation,
   RuleSourcePosition,

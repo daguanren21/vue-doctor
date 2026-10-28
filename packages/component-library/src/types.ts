@@ -1,4 +1,4 @@
-import type { PackageResolution } from '@vue-doctor/core'
+import type { PackageResolution } from '@daguanren21/vue-doctor-core'
 
 export interface ComponentLibraryEvidenceOptions {
   package: PackageResolution

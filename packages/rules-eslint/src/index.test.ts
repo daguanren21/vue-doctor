@@ -4,9 +4,9 @@ import { join } from 'node:path'
 import { afterEach, expect, test, vi } from 'vitest'
 import { Linter, type Rule } from 'eslint'
 import { builtinRules } from 'eslint/use-at-your-own-risk'
-import type { DoctorRulePackContext } from '@vue-doctor/core'
-import { createSourceDocument } from '@vue-doctor/source'
-import { defineRule, defineRules, engineRule } from '@vue-doctor/rules'
+import type { DoctorRulePackContext } from '@daguanren21/vue-doctor-core'
+import { createSourceDocument } from '@daguanren21/vue-doctor-source'
+import { defineRule, defineRules, engineRule } from '@daguanren21/vue-doctor-rules'
 import { createEslintRuleEngine, eslintRule, type EslintRuleConfig } from './index.js'
 
 vi.mock('@typescript-eslint/parser', async importOriginal => {
@@ -109,6 +109,10 @@ test('conditional deferred type stages require a program only when requested', a
   expect(result.checks?.[0]?.status).toBe('unavailable')
   expect(result.skippedChecks[0]).toMatchObject({ required: true, reason: 'missing-capability' })
   expect(result.skippedChecks[0]?.evidence[0]?.message).toContain('real type program')
+  const resolved = await pack.run(await fixture('sample.ts', 'const value = 1', true))
+  expect(resolved.skippedChecks).toEqual([])
+  expect(resolved.diagnostics).toHaveLength(1)
+  expect(resolved.checks?.[0]).toMatchObject({ status: 'checked', files: 1 })
 })
 
 test('per-run services are disposed and disabled rules never enter the batch', async () => {
@@ -128,6 +132,49 @@ test('per-run services are disposed and disabled rules never enter the batch', a
   expect(moduleFactory).toHaveBeenCalledTimes(2)
   expect(first.checks?.map(c => c.status)).toEqual(['checked', 'disabled'])
   expect(prepare.mock.results[0]?.value.generation).not.toBe(prepare.mock.results[1]?.value.generation)
+})
+
+test('selection and prerequisite-only outcomes still dispose prepared services', async () => {
+  const lifecycle: string[] = []
+  const services = { selected: false }
+  const dispose = vi.fn(async () => { lifecycle.push('dispose') })
+  const engine = createEslintRuleEngine({
+    async prepare() { lifecycle.push('prepare'); return services },
+    dispose
+  })
+  const pack = defineRules({ name: 'example', rules: {
+    inactive: defineRule({ meta: meta(), check: engineRule(engine, {
+      module: reportModule,
+      select(dc) { lifecycle.push('select'); return dc.services.selected }
+    }) }),
+    typed: defineRule({ meta: meta(), check: engineRule(engine, { module: reportModule, typed: true }) })
+  } })
+  const result = await pack.run(await fixture('sample.ts', 'const value = 1'))
+  expect(result.diagnostics).toEqual([])
+  expect(result.checks?.map(c => [c.status, c.files])).toEqual([['not-applicable', 0], ['unavailable', 0]])
+  expect(result.skippedChecks).toHaveLength(1)
+  expect(result.skippedChecks[0]).toMatchObject({ ruleCode: 'example/typed', required: true, reason: 'missing-capability' })
+  expect(lifecycle).toEqual(['prepare', 'select', 'dispose'])
+  expect(dispose).toHaveBeenCalledWith(services)
+})
+
+test('prepared services are disposed when selection fails before entering a parser', async () => {
+  const services = { generation: Symbol() }
+  const dispose = vi.fn()
+  const engine = createEslintRuleEngine({ prepare: async () => services, dispose })
+  const pack = defineRules({ name: 'example', rules: {
+    sample: defineRule({ meta: meta(), check: engineRule(engine, {
+      module: reportModule,
+      select() { throw new Error('Selection failed.') }
+    }) })
+  } })
+  const result = await pack.run(await fixture('sample.js', 'let value = 1'))
+  expect(result.diagnostics).toEqual([])
+  expect(result.checks?.[0]?.status).toBe('unavailable')
+  expect(result.skippedChecks[0]).toMatchObject({ required: true, reason: 'missing-capability' })
+  expect(result.skippedChecks[0]?.evidence[0]?.message).toContain('Selection failed.')
+  expect(dispose).toHaveBeenCalledTimes(1)
+  expect(dispose).toHaveBeenCalledWith(services)
 })
 
 test('parser and adapter failures produce required skips without partial findings', async () => {

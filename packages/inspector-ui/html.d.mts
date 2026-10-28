@@ -1,3 +1,6 @@
+/** Absolute directory containing the built Doctor workspace. */
+export declare const inspectorClientAssets: string
+
 export interface InspectorHtmlOptions {
   reportEndpoint?: string
   openEditorEndpoint?: string

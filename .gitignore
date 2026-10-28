@@ -74,7 +74,7 @@ packages/vue-doctor/skills/
 .warp/
 
 # logs / coverage / caches
-coverage/
+/coverage/
 .nyc_output/
 .cache/
 .turbo/

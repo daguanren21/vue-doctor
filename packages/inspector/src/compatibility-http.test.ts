@@ -2,7 +2,7 @@ import type { IncomingMessage } from 'node:http'
 import { expect, test } from 'vitest'
 import type { ServerResponse } from 'node:http'
 import { createInspectorCompatibilityMiddleware, isLocalCompatibilityRequest } from './compatibility-http.js'
-import type { DoctorReport } from '@vue-doctor/core'
+import type { DoctorReport } from '@daguanren21/vue-doctor-core'
 
 function request(peer: string, host: string, origin?: string): IncomingMessage {
   return { socket: { remoteAddress: peer }, headers: { host, ...(origin ? { origin } : {}) } } as IncomingMessage

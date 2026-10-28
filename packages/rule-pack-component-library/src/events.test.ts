@@ -3,8 +3,9 @@ import type {
   ComponentLibraryEvidence,
   ContractDimension,
   EventContract,
-  PropContract
-} from '@vue-doctor/component-library'
+  PropContract,
+  PropTypeDescriptor
+} from '@daguanren21/vue-doctor-component-library'
 import type {
   VueComponentUsage,
   VueDirectiveUsage,
@@ -12,8 +13,8 @@ import type {
   VueModelUsage,
   VuePropUsage,
   VueSlotUsage
-} from '@vue-doctor/source'
-import { analyzeSourceText } from '@vue-doctor/source'
+} from '@daguanren21/vue-doctor-source'
+import { analyzeSourceText } from '@daguanren21/vue-doctor-source'
 import { describe, expect, test } from 'vitest'
 import { diagnoseComponentLibraryUsage } from './index.js'
 import { diagnoseComponentLibraryUsageResult } from './events.js'
@@ -513,12 +514,368 @@ export default { methods: { done() {} }, ${options} }
     ])
   })
 
-  test('does not claim a type mismatch from partial prop evidence', () => {
-    const diagnostics = diagnoseComponentLibraryUsage({
+  test.each(['1', '01', '+1', '-1', '1.5', '1e2', ' 1 ', '0x10', 'true', 'false'])(
+    'preserves static text "%s" as a matching string literal',
+    (value) => {
+      const usage = analyzeSourceText(
+        sourceFile,
+        `<template><ExampleInput literal="${value}" text="${value}" /></template>`
+      ).components[0]!
+      const result = diagnoseComponentLibraryUsageResult({
+        matches: [createMatch({
+          props: knownDimension<PropContract>([
+            ['literal', { name: 'literal', types: [{ kind: 'literal', value }] }],
+            ['text', { name: 'text', types: [{ kind: 'string' }] }]
+          ])
+        }, usage)]
+      })
+
+      expect(result).toEqual({ diagnostics: [], skippedChecks: [] })
+    }
+  )
+
+  test('rejects static numeric text but accepts dynamic numbers without cross-type literal matches', () => {
+    const usage = analyzeSourceText(
+      sourceFile,
+      `<template><ExampleInput
+  count="1"
+  one="1"
+  :bound-count="1"
+  :bound-one="1"
+  :quoted-count="'1'"
+  :quoted-one="'1'"
+/></template>`
+    ).components[0]!
+    const result = diagnoseComponentLibraryUsageResult({
+      matches: [createMatch({
+        props: knownDimension<PropContract>([
+          ['count', { name: 'count', types: [{ kind: 'number' }] }],
+          ['one', { name: 'one', types: [{ kind: 'literal', value: 1 }] }],
+          ['boundCount', { name: 'boundCount', types: [{ kind: 'number' }] }],
+          ['boundOne', { name: 'boundOne', types: [{ kind: 'literal', value: 1 }] }],
+          ['quotedCount', { name: 'quotedCount', types: [{ kind: 'number' }] }],
+          ['quotedOne', { name: 'quotedOne', types: [{ kind: 'literal', value: 1 }] }]
+        ])
+      }, usage)]
+    })
+
+    expect(result.diagnostics.map(diagnostic => ({
+      code: diagnostic.code,
+      line: diagnostic.evidence.find(item => item.kind === 'source-prop-binding')?.line
+    }))).toEqual([2, 3, 6, 7].map(line => ({ code: 'component-prop-type-mismatch', line })))
+    expect(result.skippedChecks).toEqual([])
+  })
+
+  test.each(['number', 'function'] as const)('checks an explicitly declared lowercase onclick prop against its %s type', (kind) => {
+    const usage = analyzeSourceText(sourceFile, '<template><ExampleInput onclick="1" /></template>').components[0]!
+    const result = diagnoseComponentLibraryUsageResult({
+      matches: [createMatch({
+        props: knownDimension<PropContract>([['onclick', { name: 'onclick', types: [{ kind }] }]])
+      }, usage)]
+    })
+
+    expect(result.diagnostics).toEqual([expect.objectContaining({
+      code: 'component-prop-type-mismatch', file: sourceFile
+    })])
+    expect(result.skippedChecks).toEqual([])
+  })
+
+  test.each([true, false])('does not coerce static Boolean text "%s" into a Boolean value', (value) => {
+    const usage = analyzeSourceText(
+      sourceFile,
+      `<template><ExampleInput flag="${value}" literal="${value}" /></template>`
+    ).components[0]!
+    const result = diagnoseComponentLibraryUsageResult({
+      matches: [createMatch({
+        props: knownDimension<PropContract>([
+          ['flag', { name: 'flag', types: [{ kind: 'boolean' }] }],
+          ['literal', { name: 'literal', types: [{ kind: 'literal', value }] }]
+        ])
+      }, usage)]
+    })
+
+    expect(result.diagnostics).toEqual(['flag', 'literal'].map((name) => (
+      expect.objectContaining({
+        code: 'component-prop-type-mismatch',
+        message: expect.stringContaining(`prop "${name}"`)
+      })
+    )))
+    expect(result.skippedChecks).toEqual([])
+  })
+
+  test('preserves dynamic primitive types when matching string, number and Boolean literals', () => {
+    const usage = analyzeSourceText(
+      sourceFile,
+      `<template><ExampleInput
+        :text="'1'" :number="1" :word="'false'" :flag="false"
+        :wrong-text="1" :wrong-number="'1'" :wrong-word="false" :wrong-flag="'false'"
+      /></template>`
+    ).components[0]!
+    const result = diagnoseComponentLibraryUsageResult({
+      matches: [createMatch({
+        props: knownDimension<PropContract>([
+          ['text', { name: 'text', types: [{ kind: 'literal', value: '1' }] }],
+          ['number', { name: 'number', types: [{ kind: 'literal', value: 1 }] }],
+          ['word', { name: 'word', types: [{ kind: 'literal', value: 'false' }] }],
+          ['flag', { name: 'flag', types: [{ kind: 'literal', value: false }] }],
+          ['wrongText', { name: 'wrongText', types: [{ kind: 'literal', value: '1' }] }],
+          ['wrongNumber', { name: 'wrongNumber', types: [{ kind: 'literal', value: 1 }] }],
+          ['wrongWord', { name: 'wrongWord', types: [{ kind: 'literal', value: 'false' }] }],
+          ['wrongFlag', { name: 'wrongFlag', types: [{ kind: 'literal', value: false }] }]
+        ])
+      }, usage)]
+    })
+
+    expect(result.diagnostics).toEqual(['wrong-text', 'wrong-number', 'wrong-word', 'wrong-flag'].map((name) => (
+      expect.objectContaining({
+        code: 'component-prop-type-mismatch',
+        message: expect.stringContaining(`prop "${name}"`)
+      })
+    )))
+    expect(result.skippedChecks).toEqual([])
+  })
+
+  test.each(['text empty number', 'text="" empty="" number=""'])(
+    'treats non-Boolean presence and empty attributes as empty strings: %s',
+    (attributes) => {
+      const usage = analyzeSourceText(
+        sourceFile,
+        `<template><ExampleInput ${attributes} /></template>`
+      ).components[0]!
+      const result = diagnoseComponentLibraryUsageResult({
+        matches: [createMatch({
+          props: knownDimension<PropContract>([
+            ['text', { name: 'text', types: [{ kind: 'string' }] }],
+            ['empty', { name: 'empty', types: [{ kind: 'literal', value: '' }] }],
+            ['number', { name: 'number', types: [{ kind: 'number' }] }]
+          ])
+        }, usage)]
+      })
+
+      expect(result.diagnostics).toEqual([expect.objectContaining({
+        code: 'component-prop-type-mismatch',
+        message: expect.stringContaining('prop "number"')
+      })])
+      expect(result.skippedChecks).toEqual([])
+    }
+  )
+
+  test.each([
+    'is-ready',
+    'is-ready=""',
+    'is-ready="is-ready"',
+    ':is-ready="\'\'"',
+    ':is-ready="\'is-ready\'"',
+    ':is-ready="true"',
+    ':is-ready="false"'
+  ])('accepts supported Boolean flags with Vue casting semantics: %s', (attribute) => {
+    const usage = analyzeSourceText(
+      sourceFile,
+      `<template><ExampleInput ${attribute} /></template>`
+    ).components[0]!
+    const result = diagnoseComponentLibraryUsageResult({
+      matches: [createMatch({
+        props: knownDimension<PropContract>([
+          ['isReady', { name: 'isReady', types: [{ kind: 'boolean' }] }]
+        ])
+      }, usage)]
+    })
+
+    expect(result).toEqual({ diagnostics: [], skippedChecks: [] })
+  })
+
+  test.each(['yes no', 'yes="" no=""'])(
+    'accepts true-only Boolean presence and rejects false-only flags: %s',
+    (attributes) => {
+      const usage = analyzeSourceText(
+        sourceFile,
+        `<template><ExampleInput ${attributes} /></template>`
+      ).components[0]!
+      const result = diagnoseComponentLibraryUsageResult({
+        matches: [createMatch({
+          props: knownDimension<PropContract>([
+            ['yes', { name: 'yes', types: [{ kind: 'literal', value: true }] }],
+            ['no', { name: 'no', types: [{ kind: 'literal', value: false }] }]
+          ])
+        }, usage)]
+      })
+
+      expect(result.diagnostics).toEqual([expect.objectContaining({
+        code: 'component-prop-type-mismatch',
+        message: expect.stringContaining('prop "no"')
+      })])
+      expect(result.skippedChecks).toEqual([])
+    }
+  )
+
+  test.each([
+    'broad exact rejected',
+    'broad="" exact="" rejected=""',
+    ':broad="\'\'" :exact="\'\'" :rejected="\'\'"'
+  ])('decides mixed String/Boolean compatibility when both casting outcomes agree: %s', (attributes) => {
+    const usage = analyzeSourceText(
+      sourceFile,
+      `<template><ExampleInput ${attributes} /></template>`
+    ).components[0]!
+    const result = diagnoseComponentLibraryUsageResult({
+      matches: [createMatch({
+        props: knownDimension<PropContract>([
+          ['broad', { name: 'broad', types: [{ kind: 'string' }, { kind: 'boolean' }] }],
+          ['exact', { name: 'exact', types: [{ kind: 'literal', value: '' }, { kind: 'literal', value: true }] }],
+          ['rejected', { name: 'rejected', types: [{ kind: 'literal', value: 'manual' }, { kind: 'literal', value: false }] }]
+        ])
+      }, usage)]
+    })
+
+    expect(result.diagnostics).toEqual([expect.objectContaining({
+      code: 'component-prop-type-mismatch',
+      message: expect.stringContaining('prop "rejected"')
+    })])
+    expect(result.skippedChecks).toEqual([])
+  })
+
+  test.each(['mode', 'mode=""', ':mode="\'\'"', 'mode="mode"', ':mode="\'mode\'"'])(
+    'marks order-dependent String/Boolean casting as incomplete: %s',
+    (attribute) => {
+      const usage = analyzeSourceText(
+        sourceFile,
+        `<template><ExampleInput ${attribute} /></template>`
+      ).components[0]!
+      const typeSets: PropTypeDescriptor[][] = [
+        [{ kind: 'boolean' }, { kind: 'literal', value: 'manual' }],
+        [{ kind: 'literal', value: 'manual' }, { kind: 'boolean' }],
+        [{ kind: 'string' }, { kind: 'literal', value: false }],
+        [{ kind: 'literal', value: false }, { kind: 'string' }]
+      ]
+
+      for (const types of typeSets) {
+        const result = diagnoseComponentLibraryUsageResult({
+          matches: [createMatch({
+            props: knownDimension<PropContract>([['mode', { name: 'mode', types }]])
+          }, usage)]
+        })
+
+        expect(result.diagnostics).toEqual([])
+        expect(result.skippedChecks).toEqual([expect.objectContaining({
+          ruleCode: 'component-prop-type-mismatch',
+          required: true,
+          reason: 'missing-capability',
+          file: sourceFile
+        })])
+      }
+    }
+  )
+
+  test.each([
+    { name: 'isReady', accepted: 'is-ready', rejected: 'isReady' },
+    { name: 'isURLReady', accepted: 'is-u-r-l-ready', rejected: 'is-urlready' },
+    { name: 'is_ready', accepted: 'is_ready', rejected: 'is-ready' }
+  ])('uses Vue Boolean casting names without alias normalization for $name', ({ name, accepted, rejected }) => {
+    const usages = analyzeSourceText(
+      sourceFile,
+      `<template><ExampleInput ${name}="${accepted}" /><ExampleInput ${name}="${rejected}" /></template>`
+    ).components
+    const results = usages.map((usage) => diagnoseComponentLibraryUsageResult({
+      matches: [createMatch({
+        props: knownDimension<PropContract>([[name, { name, types: [{ kind: 'boolean' }] }]])
+      }, usage)]
+    }))
+
+    expect(results[0]).toEqual({ diagnostics: [], skippedChecks: [] })
+    expect(results[1]?.diagnostics).toEqual([expect.objectContaining({
+      code: 'component-prop-type-mismatch',
+      file: sourceFile
+    })])
+    expect(results[1]?.skippedChecks).toEqual([])
+  })
+
+  test('marks unresolved constrained dynamic props as required type-check skips', () => {
+    const usage = analyzeSourceText(
+      sourceFile,
+      `<script setup>
+import { runtimeValue } from './runtime'
+const config = { known: 1, ...runtimeValue }
+</script>
+<template><ExampleInput
+  :count="runtimeValue"
+  :config="config"
+/></template>`,
+      { resolveConstants: true }
+    ).components[0]!
+    const result = diagnoseComponentLibraryUsageResult({
+      matches: [createMatch({
+        props: knownDimension<PropContract>([
+          ['count', { name: 'count', types: [{ kind: 'number' }] }],
+          ['config', { name: 'config', types: [{ kind: 'object' }] }]
+        ])
+      }, usage)]
+    })
+
+    expect(result.diagnostics).toEqual([])
+    expect(result.skippedChecks).toEqual(usage.props.map((prop) => expect.objectContaining({
+      ruleCode: 'component-prop-type-mismatch',
+      required: true,
+      reason: 'missing-capability',
+      file: sourceFile,
+      evidence: expect.arrayContaining([expect.objectContaining({
+        kind: 'source-prop-binding',
+        file: sourceFile,
+        line: prop.loc.line
+      })])
+    })))
+    expect(result.skippedChecks).toHaveLength(2)
+  })
+
+  test('marks absent prop type constraints as required type-check skips', () => {
+    const usage = analyzeSourceText(
+      sourceFile,
+      '<template><ExampleInput missing="1" empty="1" /></template>'
+    ).components[0]!
+    const result = diagnoseComponentLibraryUsageResult({
+      matches: [createMatch({
+        props: knownDimension<PropContract>([
+          ['missing', { name: 'missing' }],
+          ['empty', { name: 'empty', types: [] }]
+        ])
+      }, usage)]
+    })
+
+    expect(result.diagnostics).toEqual([])
+    expect(result.skippedChecks).toEqual(['missing', 'empty'].map(() => expect.objectContaining({
+      ruleCode: 'component-prop-type-mismatch',
+      required: true,
+      reason: 'missing-capability'
+    })))
+  })
+
+  test('accepts unresolved values for explicit any and unknown prop types', () => {
+    const usage = analyzeSourceText(
+      sourceFile,
+      `<script setup>
+import { runtimeValue } from './runtime'
+const config = { known: 1, ...runtimeValue }
+</script>
+<template><ExampleInput :unrestricted="runtimeValue" :opaque="config" /></template>`,
+      { resolveConstants: true }
+    ).components[0]!
+    const result = diagnoseComponentLibraryUsageResult({
+      matches: [createMatch({
+        props: knownDimension<PropContract>([
+          ['unrestricted', { name: 'unrestricted', types: [{ kind: 'any' }] }],
+          ['opaque', { name: 'opaque', types: [{ kind: 'unknown' }] }]
+        ])
+      }, usage)]
+    })
+
+    expect(result).toEqual({ diagnostics: [], skippedChecks: [] })
+  })
+
+  test.each(['partial', 'known'] as const)('does not claim a type mismatch from %s prop evidence with conflicts', (knowledge) => {
+    const result = diagnoseComponentLibraryUsageResult({
       matches: [createMatch(
         {
           props: {
-            knowledge: 'partial',
+            knowledge,
             acceptance: 'closed',
             entries: new Map<string, PropContract>([
               ['fixed', { name: 'fixed', types: [{ kind: 'boolean' }] }]
@@ -538,15 +895,20 @@ export default { methods: { done() {} }, ${options} }
       )]
     })
 
-    expect(diagnostics).toEqual([])
+    expect(result.diagnostics).toEqual([])
+    expect(result.skippedChecks).toEqual([expect.objectContaining({
+      ruleCode: 'component-prop-type-mismatch',
+      required: true,
+      reason: 'partial-contract'
+    })])
   })
 
   test('treats lowercase native on attributes as fallthrough instead of typed listener props', () => {
-    const diagnostics = diagnoseComponentLibraryUsage({
+    const result = diagnoseComponentLibraryUsageResult({
       matches: [createMatch(
         {
           props: knownDimension([
-            ['oninput', { name: 'oninput', types: [{ kind: 'function' }] }]
+            ['onInput', { name: 'onInput', types: [{ kind: 'function' }] }]
           ]),
           fallthrough: { attributes: 'closed', listeners: 'unknown' }
         },
@@ -561,7 +923,7 @@ export default { methods: { done() {} }, ${options} }
       )]
     })
 
-    expect(diagnostics).toEqual([])
+    expect(result).toEqual({ diagnostics: [], skippedChecks: [] })
   })
 
   test('type-checks dynamic bindings only when their complete static value is known', () => {
@@ -616,7 +978,7 @@ export default { methods: { done() {} }, ${options} }
   })
 
   test('does not type-check unknown expressions or partially evaluated static evidence', () => {
-    const diagnostics = diagnoseComponentLibraryUsage({
+    const result = diagnoseComponentLibraryUsageResult({
       matches: [createMatch(
         {
           props: knownDimension([
@@ -646,7 +1008,16 @@ export default { methods: { done() {} }, ${options} }
       )]
     })
 
-    expect(diagnostics).toEqual([])
+    expect(result.diagnostics).toEqual([])
+    expect(result.skippedChecks).toEqual([4, 5].map((line) => expect.objectContaining({
+      ruleCode: 'component-prop-type-mismatch',
+      required: true,
+      reason: 'missing-capability',
+      evidence: expect.arrayContaining([expect.objectContaining({
+        kind: 'source-prop-binding',
+        line
+      })])
+    })))
   })
 
   test('suppresses loading companion attributes only with the loading directive', () => {

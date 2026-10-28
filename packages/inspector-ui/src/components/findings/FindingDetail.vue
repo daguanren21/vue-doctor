@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, shallowRef, useId, watch } from 'vue'
 import { Icon } from '@iconify/vue'
-import { INSPECTOR_EDITORS, isInspectorEditor } from '@vue-doctor/inspector-protocol'
+import { INSPECTOR_EDITORS, isInspectorEditor } from '@daguanren21/vue-doctor-inspector-protocol'
 import type {
   InspectorEditor,
   InspectorFindingDetail,
   InspectorSnippet
-} from '@vue-doctor/inspector-protocol'
+} from '@daguanren21/vue-doctor-inspector-protocol'
 import type { InspectorMessages } from '../../i18n'
 import { inspectorIcons } from '../../lib/icons'
 import { inspectorButton, severityBadge } from '../../lib/variants'

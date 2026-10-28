@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import type { DoctorRulePack, DoctorRulePackContext } from '@vue-doctor/core'
+import type { DoctorRulePack, DoctorRulePackContext } from '@daguanren21/vue-doctor-core'
 import { runRulePacks, selectRulePackSourceExtensions } from './rule-packs.js'
 
 const context: DoctorRulePackContext = {
@@ -527,18 +527,55 @@ describe('rule execution coverage', () => {
     await runRulePacks([pack], { ...context, projectContext, targetFiles })
   })
 
-  test('keeps metadata-free legacy packs without check records', async () => {
+  test.each([
+    { label: 'omitted', checks: undefined },
+    { label: 'empty', checks: [] }
+  ])('missing metadata-free execution evidence is unavailable with $label checks', async ({ checks }) => {
     const pack: DoctorRulePack = {
       name: 'legacy',
       rules: [{ code: 'legacy/rule', title: 'Legacy rule', description: 'No registry metadata.' }],
-      run: () => ({ diagnostics: [], skippedChecks: [] })
+      run: () => ({ diagnostics: [], skippedChecks: [], ...(checks ? { checks } : {}) })
     }
 
     const result = await runRulePacks([pack], context)
     expect(result.reports[0]).toEqual({
       name: 'legacy',
       rules: pack.rules,
-      coverageStatus: 'complete'
+      coverageStatus: 'partial',
+      checks: [{
+        ruleCode: 'legacy/rule',
+        status: 'unavailable',
+        reason: 'No per-rule execution evidence was reported.'
+      }]
+    })
+  })
+
+  test('normalizes every metadata-free rule while preserving explicit complete and inactive statuses', async () => {
+    const codes = ['checked', 'not-applicable', 'disabled', 'missing', 'off'] as const
+    const pack: DoctorRulePack = {
+      name: 'plain',
+      rules: codes.map(code => ({ code: `plain/${code}`, title: code, description: code })),
+      run: () => ({
+        diagnostics: [],
+        skippedChecks: [],
+        checks: [
+          { ruleCode: 'plain/checked', status: 'checked', files: 1 },
+          { ruleCode: 'plain/not-applicable', status: 'not-applicable', reason: 'No matching target.' },
+          { ruleCode: 'plain/disabled', status: 'disabled' }
+        ]
+      })
+    }
+
+    const result = await runRulePacks([pack], { ...context, rules: { 'plain/off': 'off' } })
+    expect(result.reports[0]).toMatchObject({
+      coverageStatus: 'partial',
+      checks: [
+        { ruleCode: 'plain/checked', status: 'checked', files: 1 },
+        { ruleCode: 'plain/not-applicable', status: 'not-applicable', reason: 'No matching target.' },
+        { ruleCode: 'plain/disabled', status: 'disabled' },
+        { ruleCode: 'plain/missing', status: 'unavailable' },
+        { ruleCode: 'plain/off', status: 'disabled' }
+      ]
     })
   })
 })

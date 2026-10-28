@@ -135,20 +135,20 @@ export function collectScriptBindingFacts(program: unknown): ScriptBindingFacts 
       return
     }
 
-    if (node.type === 'FunctionDeclaration') {
-      addPattern(node.id, scope, 'function')
+    if (node.type === 'FunctionDeclaration' || node.type === 'FunctionExpression' || node.type === 'ArrowFunctionExpression') {
+      if (node.type === 'FunctionDeclaration') addPattern(node.id, scope, 'function')
       const functionScope = createScope(node, scope, 'function')
-      addPattern(node.id, functionScope, 'function')
       for (const parameter of node.params ?? []) addPattern(parameter, functionScope, 'parameter')
-      if (asNode(node.body)) walk(node.body as AstNode, functionScope)
-      return
-    }
-
-    if (node.type === 'FunctionExpression' || node.type === 'ArrowFunctionExpression') {
-      const functionScope = createScope(node, scope, 'function')
-      if (node.type === 'FunctionExpression') addPattern(node.id, functionScope, 'function')
-      for (const parameter of node.params ?? []) addPattern(parameter, functionScope, 'parameter')
-      if (asNode(node.body)) walk(node.body as AstNode, functionScope)
+      if (node.type !== 'ArrowFunctionExpression') addPattern(node.id, functionScope, 'function')
+      for (const parameter of node.params ?? []) walk(parameter, functionScope)
+      const body = asNode(node.body)
+      if (body?.type === 'BlockStatement' && node.params?.some(hasParameterExpression)) {
+        // Default initializers close over parameters, never body-only var/function bindings.
+        const bodyScope = createScope(body, functionScope, 'function')
+        walkChildren(body, bodyScope)
+      } else if (body) {
+        walk(body, functionScope)
+      }
       return
     }
 
@@ -276,6 +276,24 @@ function patternNames(pattern: AstNode | undefined): string[] {
     })
   }
   return []
+}
+
+function hasParameterExpression(pattern: AstNode): boolean {
+  if (pattern.type === 'AssignmentPattern') return true
+  if (pattern.type === 'RestElement') return Boolean(pattern.argument && hasParameterExpression(pattern.argument))
+  if (pattern.type === 'TSParameterProperty') {
+    const parameter = asNode(pattern.parameter)
+    return Boolean(parameter && hasParameterExpression(parameter))
+  }
+  if (pattern.type === 'ArrayPattern') return (pattern.elements ?? []).some(element => element && hasParameterExpression(element))
+  if (pattern.type === 'ObjectPattern') {
+    return (pattern.properties ?? []).some(property => {
+      if (property.type === 'RestElement') return Boolean(property.argument && hasParameterExpression(property.argument))
+      const value = asNode(property.value)
+      return Boolean(property.computed || (value && hasParameterExpression(value)))
+    })
+  }
+  return false
 }
 
 function nodeRange(node: AstNode): [number, number] {

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onScopeDispose } from 'vue'
 import { Icon } from '@iconify/vue'
-import type { InspectorEditor } from '@vue-doctor/inspector-protocol'
+import type { InspectorEditor } from '@daguanren21/vue-doctor-inspector-protocol'
 import AuditView from './components/audit/AuditView.vue'
 import CoverageView from './components/coverage/CoverageView.vue'
 import EmptyState from './components/EmptyState.vue'

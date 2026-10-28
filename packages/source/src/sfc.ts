@@ -1,6 +1,7 @@
 import tsParser from '@typescript-eslint/parser'
 import { parse as parseSfcDescriptor, type SFCDescriptor } from '@vue/compiler-sfc'
 import { parse as parseJavaScript, parseForESLint } from 'vue-eslint-parser'
+import { templateParser } from './template-parser.js'
 import type {
   ParsedVueDocument,
   ParsedVueSource,
@@ -10,8 +11,16 @@ import type {
 } from './types.js'
 
 
+interface ParsedBlock {
+  result: SourceBlockResult
+  ast?: unknown
+  source?: string
+  /** Offset in the original block content, excluding synthetic parser wrappers. */
+  errorOffset?: number
+}
+
 export function parseVueSource(source: string, file: string): ParsedVueSource {
-  const { descriptor, errors } = parseSfcDescriptor(source, { filename: file, ignoreEmpty: false })
+  const { descriptor, errors } = parseSfcDescriptor(source, { filename: file, ignoreEmpty: false, sourceMap: false })
   const { failures: descriptorFailures, blocksByError } = collectDescriptorFailures(errors, source)
   const template = withDescriptorFailure(
     'template',
@@ -21,9 +30,9 @@ export function parseVueSource(source: string, file: string): ParsedVueSource {
   const { script, scriptSetup, scriptPrograms } = parseScripts(descriptor, source, file, descriptorFailures)
 
 
-  const blocks = [template.result, script.result, scriptSetup.result]
+  const parsedBlocks = [template, script, scriptSetup]
   return {
-    blocks,
+    blocks: parsedBlocks.map(block => block.result),
     ...(template.ast
       ? {
           templateAst: remapTemplateLocations(template.ast, source, descriptor.template?.loc.start.offset ?? 0),
@@ -31,7 +40,7 @@ export function parseVueSource(source: string, file: string): ParsedVueSource {
         }
       : {}),
     scriptPrograms,
-    document: createParsedVueDocument(descriptor, errors, blocks, blocksByError)
+    document: createParsedVueDocument(descriptor, errors, parsedBlocks, blocksByError, source)
   }
 }
 
@@ -74,8 +83,9 @@ function parseScripts(
 function createParsedVueDocument(
   descriptor: SFCDescriptor,
   descriptorErrors: Array<unknown>,
-  parsedBlocks: SourceBlockResult[],
-  blocksByError: ReadonlyMap<unknown, SourceBlockKind>
+  parsedBlocks: ParsedBlock[],
+  blocksByError: ReadonlyMap<unknown, SourceBlockKind>,
+  originalSource: string
 ): ParsedVueDocument {
   const blocks: SourceDocumentBlock[] = []
   const errors = descriptorErrors.map(sourceError)
@@ -120,17 +130,28 @@ function createParsedVueDocument(
     }
   }
   blocks.sort((left, right) => left.start - right.start)
-  for (const block of parsedBlocks) {
+  const descriptorMessages = new Set(errors.map(error => error.message))
+  const toLocation = parsedBlocks.some(block => block.errorOffset !== undefined)
+    ? createLocationResolver(originalSource)
+    : undefined
+  for (const parsed of parsedBlocks) {
+    const block = parsed.result
     if (block.status !== 'failed' || !block.message) continue
-    if (errors.some((error) => error.message === block.message)) continue
+    if (descriptorMessages.has(block.message)) continue
     const sourceBlock = block.kind === 'template'
       ? descriptor.template
       : block.kind === 'script'
         ? descriptor.script
         : descriptor.scriptSetup
+    const position = sourceBlock && parsed.errorOffset !== undefined && toLocation
+      ? toLocation(sourceBlock.loc.start.offset + parsed.errorOffset)
+      : undefined
     errors.push({
       message: block.message,
-      ...(sourceBlock ? {
+      ...(position ? {
+        line: position.line,
+        column: position.column + 1
+      } : sourceBlock ? {
         line: sourceBlock.loc.start.line,
         column: sourceBlock.loc.start.column
       } : {})
@@ -192,7 +213,7 @@ function inferBlockFromOffset(source: string, offset: number | undefined) {
   return [match[0], match[1], match[0].includes('setup') ? 'setup' : undefined] as RegExpMatchArray
 }
 
-function withDescriptorFailure<T extends { result: SourceBlockResult; ast?: unknown }>(
+function withDescriptorFailure<T extends ParsedBlock>(
   kind: SourceBlockKind,
   parsed: T,
   failures: Map<SourceBlockKind, unknown>
@@ -201,14 +222,14 @@ function withDescriptorFailure<T extends { result: SourceBlockResult; ast?: unkn
   if (failure === undefined) {
     return parsed
   }
-  const { ast: _ast, ...withoutAst } = parsed
+  const { ast: _ast, errorOffset: _errorOffset, ...withoutAst } = parsed
   return {
     ...withoutAst,
     result: blockResult(kind, 'failed', parsed.result.lang, failure)
   } as T
 }
 
-function parseTemplateBlock(content: string | undefined, lang: string | undefined, src?: string) {
+function parseTemplateBlock(content: string | undefined, lang: string | undefined, src?: string): ParsedBlock {
   if (src) return { result: blockResult('template', 'failed', lang, `External template source is unavailable: ${src}`) }
   if (content === undefined) {
     return { result: blockResult('template', 'absent') }
@@ -229,7 +250,7 @@ function parseTemplateBlock(content: string | undefined, lang: string | undefine
         jsx: 'espree',
         ts: tsParser,
         tsx: tsParser,
-        '<template>': tsParser
+        '<template>': templateParser
       }
     })
     const templateErrors = ((parsed.ast.templateBody as { errors?: unknown[] } | undefined)?.errors ?? [])
@@ -243,7 +264,10 @@ function parseTemplateBlock(content: string | undefined, lang: string | undefine
       source
     }
   } catch (error) {
-    return { result: blockResult('template', 'failed', lang, error) }
+    return {
+      result: blockResult('template', 'failed', lang, error),
+      errorOffset: parserErrorOffset(error, content.length, '<template>'.length)
+    }
   }
 }
 
@@ -262,7 +286,7 @@ function parseScriptBlock(
   lang: string | undefined,
   file: string,
   src?: string
-) {
+): ParsedBlock {
   if (src) return { result: blockResult(kind, 'failed', lang, `External script source is unavailable: ${src}`) }
   if (content === undefined) {
     return { result: blockResult(kind, 'absent') }
@@ -286,8 +310,18 @@ function parseScriptBlock(
       ast
     }
   } catch (error) {
-    return { result: blockResult(kind, 'failed', lang, error) }
+    return {
+      result: blockResult(kind, 'failed', lang, error),
+      errorOffset: parserErrorOffset(error, content.length)
+    }
   }
+}
+
+function parserErrorOffset(error: unknown, contentLength: number, prefixLength = 0): number | undefined {
+  const index = (error as { index?: unknown } | undefined)?.index
+  return typeof index === 'number' && Number.isFinite(index)
+    ? Math.min(contentLength, Math.max(0, index - prefixLength))
+    : undefined
 }
 
 function parseJavaScriptBlock(content: string) {

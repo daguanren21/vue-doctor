@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import type { DoctorReport } from '@vue-doctor/core'
+import type { DoctorReport } from '@daguanren21/vue-doctor-core'
 import { inspectorCheckRows } from './checks'
 
 const base: DoctorReport = {

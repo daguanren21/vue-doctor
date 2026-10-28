@@ -4,7 +4,7 @@ import {
   resolveImportedBinding,
   resolveLexicalBinding,
   type ScriptBindingFacts
-} from '@vue-doctor/source'
+} from '@daguanren21/vue-doctor-source'
 
 type Node = {
   type?: string

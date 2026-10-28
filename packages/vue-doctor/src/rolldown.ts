@@ -1,5 +1,8 @@
-export {
-  vueDoctorRolldown as default,
-  vueDoctorRolldown as vueDoctor
-} from '@vue-doctor/unplugin'
-export type { VueDoctorUnpluginOptions as VueDoctorRolldownOptions } from '@vue-doctor/unplugin'
+import type { Plugin as RolldownPlugin } from 'rolldown'
+import { vueDoctorRolldown } from '@daguanren21/vue-doctor-unplugin'
+import type { VueDoctorUnpluginOptions as VueDoctorRolldownOptions } from '@daguanren21/vue-doctor-unplugin/options'
+
+export type { VueDoctorRolldownOptions }
+
+export const vueDoctor: (options?: VueDoctorRolldownOptions) => RolldownPlugin = vueDoctorRolldown
+export { vueDoctor as default }

@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { DoctorRulePack } from '@vue-doctor/core'
+import type { DoctorRulePack } from '@daguanren21/vue-doctor-core'
 import { describe, expect, test } from 'vitest'
 import { createDoctorAnalysisSession, runDoctor } from './index.js'
 

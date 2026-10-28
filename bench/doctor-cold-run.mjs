@@ -4,6 +4,6 @@ if (!root) {
 }
 
 const startedAt = performance.now()
-const { runDoctor } = await import('../packages/runner/dist/index.mjs')
+const { runDoctor } = await import('../packages/vue-doctor/dist/index.mjs')
 await runDoctor({ root })
 console.log(JSON.stringify({ durationMs: performance.now() - startedAt }))

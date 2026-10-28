@@ -1,5 +1,5 @@
-import { doctorDiagnosticDomains, isDoctorDiagnosticDomain } from '@vue-doctor/core/domains'
-import type { Diagnostic, DoctorDiagnosticDomain } from '@vue-doctor/core'
+import { doctorDiagnosticDomains, isDoctorDiagnosticDomain } from '@daguanren21/vue-doctor-core/domains'
+import type { Diagnostic, DoctorDiagnosticDomain } from '@daguanren21/vue-doctor-core'
 
 export type DiagnosticCategory = DoctorDiagnosticDomain
 export const diagnosticCategoryOrder = doctorDiagnosticDomains

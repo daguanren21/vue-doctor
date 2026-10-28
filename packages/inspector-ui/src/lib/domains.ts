@@ -1,4 +1,4 @@
-import type { DoctorDiagnosticDomain, DoctorDomainCoverageStatus } from '@vue-doctor/core'
+import type { DoctorDiagnosticDomain, DoctorDomainCoverageStatus } from '@daguanren21/vue-doctor-core'
 import type { InspectorLocale, inspectorMessages } from '../i18n'
 
 type Labels = (typeof inspectorMessages)[InspectorLocale]

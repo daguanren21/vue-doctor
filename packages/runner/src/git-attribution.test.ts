@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from 'vitest'
-import type { Diagnostic } from '@vue-doctor/core'
+import type { Diagnostic } from '@daguanren21/vue-doctor-core'
 import {
   enrichDiagnosticsWithGitAttribution,
   isBlameableRelativePath,

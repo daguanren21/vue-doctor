@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { describe, expect, test } from 'vitest'
+import type { AST } from 'vue-eslint-parser'
 import { analyzeSourceText, parseVueSource, scanVueSourceUsage } from './index.js'
 
 async function projectWithFile(content: string) {
@@ -82,6 +83,49 @@ describe('independent Vue SFC block analysis', () => {
       { kind: 'script', status: 'available' },
       { kind: 'script-setup', status: 'absent' }
     ])
+  })
+
+  test('preserves template type references, library globals and loop bindings across files', () => {
+    const source = '<template><div v-for="item in items" :value="item as Array<Custom>" @click="(event: MouseEvent) => handle(event, Math.max(value, 0))" /></template>'
+    const parsed = parseVueSource(source, 'First.vue')
+    expect(parsed.blocks[0]?.status).toBe('available')
+    // The successful Vue parse exposes vue-eslint-parser's Program with its template root.
+    const ast = parsed.templateAst as { templateBody: AST.VElement }
+    const template = ast.templateBody
+    const element = template.children.find((node): node is AST.VElement => node.type === 'VElement')!
+    const references = () => element.startTag.attributes.map(attribute =>
+      attribute.value?.type === 'VExpressionContainer'
+        ? attribute.value.references.map(reference => ({
+            name: reference.id.name,
+            type: reference.isTypeReference,
+            value: reference.isValueReference,
+            variable: reference.variable?.id.name
+          }))
+        : []
+    )
+    const expected = [
+      [{ name: 'items', type: false, value: true, variable: undefined }],
+      [
+        { name: 'item', type: false, value: true, variable: 'item' },
+        { name: 'Custom', type: true, value: false, variable: undefined }
+      ],
+      [
+        { name: 'MouseEvent', type: true, value: false, variable: undefined },
+        { name: 'handle', type: false, value: true, variable: undefined },
+        { name: 'value', type: false, value: true, variable: undefined }
+      ]
+    ]
+    expect(references()).toEqual(expected)
+    expect(element.variables[0]?.references.map(reference => reference.id.name)).toEqual(['item'])
+
+    const next = parseVueSource('<template><div v-for="Array in items">{{ Array.from(items) }}</div></template>', 'Second.vue')
+    const nextAst = next.templateAst as typeof ast
+    const nextTemplate = nextAst.templateBody
+    const nextElement = nextTemplate.children.find((node): node is AST.VElement => node.type === 'VElement')!
+    expect(nextElement.variables[0]?.references).toEqual([])
+    const interpolation = nextElement.children.find((node): node is AST.VExpressionContainer => node.type === 'VExpressionContainer')!
+    expect(interpolation.references.map(reference => reference.id.name)).toEqual(['items'])
+    expect(references()).toEqual(expected)
   })
 
   test('parses a Vue 2 style plain script and template', async () => {
@@ -246,6 +290,68 @@ const value = window.innerWidth
       'const value = window.innerWidth'
     )
     expect(declaration?.loc?.start).toEqual({ line: 3, column: 0 })
+  })
+
+  test.each([
+    ['script', '', '\n'],
+    ['script', ' lang="ts"', '\n'],
+    ['script setup', '', '\r\n'],
+    ['script setup', ' lang="ts"', '\r\n']
+  ])('remaps multiline parser errors in %s%s with %j newlines', (tag, attributes, newline) => {
+    const source = `<template><div /></template>${newline}<${tag}${attributes}>${newline}const good = 1${newline}const broken = ;${newline}</script>`
+    const parsed = parseVueSource(source, 'Fixture.vue')
+    const expected = [{ message: expect.any(String), line: 4, column: 16 }]
+    expect(parsed.document.errors).toEqual(expected)
+    expect(analyzeSourceText('Fixture.vue', source).preparedDocument.errors).toEqual(expected)
+    expect(parsed.blocks.find(block => block.kind === 'template')?.status).toBe('available')
+  })
+
+  test.each([
+    '<script>',
+    '<script lang="ts">',
+    '<script setup>',
+    '<script setup lang="ts">'
+  ])('remaps inline first-line script errors after %s', (opening) => {
+    const prefix = '<template><div /></template>'
+    const source = `${prefix}${opening}const broken = ;</script>`
+    expect(parseVueSource(source, 'Fixture.vue').document.errors).toEqual([
+      { message: expect.any(String), line: 1, column: source.indexOf(';') + 1 }
+    ])
+  })
+
+  test.each([
+    ['<template>', '', '<div v-for="item of"></div>'],
+    ['<template lang="html">', '\n', '<div v-for="item of"></div>'],
+    ['<template>', '\r\n', '<div v-for="item of"></div>']
+  ])('remaps template parser errors past synthetic and original prefixes: %s %j %s', (opening, newline, markup) => {
+    const prefix = `<script>export default {}</script>${newline}${opening}${newline}`
+    const source = `${prefix}${markup}</template>`
+    const errorOffset = source.indexOf('of"') + 2
+    const beforeError = source.slice(0, errorOffset)
+    const expected = [{
+      message: expect.any(String),
+      line: beforeError.split('\n').length,
+      column: errorOffset - beforeError.lastIndexOf('\n')
+    }]
+    expect(parseVueSource(source, 'Fixture.vue').document.errors).toEqual(expected)
+    const analyzed = analyzeSourceText('Fixture.vue', source)
+    expect(analyzed.preparedDocument.errors).toEqual(expected)
+    expect(analyzed.fileResult.blocks.find(block => block.kind === 'script')?.status).toBe('available')
+  })
+
+  test('preserves independent same-message script errors at their own offsets', () => {
+    const source = '<script>const first = ;</script>\r\n<script setup>const second = ;</script>'
+    expect(parseVueSource(source, 'Fixture.vue').document.errors).toEqual([
+      { message: expect.any(String), line: 1, column: source.indexOf(';') + 1 },
+      { message: expect.any(String), line: 2, column: '<script setup>const second = '.length + 1 }
+    ])
+  })
+
+  test('keeps block-start locations for unsupported syntax languages without parser positions', () => {
+    const source = '<template><div /></template>\r\n<script lang="coffee">value = 1</script>'
+    expect(parseVueSource(source, 'Fixture.vue').document.errors).toEqual([
+      { message: 'Unsupported Vue script language: coffee', line: 2, column: '<script lang="coffee">'.length + 1 }
+    ])
   })
 
   test('exposes the existing parsed SFC to downstream rules once', async () => {

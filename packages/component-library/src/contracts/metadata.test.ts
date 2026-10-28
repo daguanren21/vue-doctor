@@ -172,8 +172,7 @@ describe('metadata contract boundaries', () => {
       types: [{ kind: 'number' }, { kind: 'string' }]
     })
     expect(input.props.entries.get('placement')).toEqual({
-      name: 'placement',
-      types: [{ kind: 'unknown' }]
+      name: 'placement'
     })
   })
 

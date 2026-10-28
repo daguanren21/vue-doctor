@@ -2,8 +2,8 @@ import assert from 'node:assert/strict'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createDoctorAnalysisSession } from '../packages/runner/dist/index.mjs'
-import { defineRule, defineRules, oxcRule } from '../packages/rules/dist/index.mjs'
+import { createDoctorAnalysisSession } from '../packages/vue-doctor/dist/index.mjs'
+import { defineRule, defineRules, oxcRule } from '../packages/vue-doctor/dist/rules.mjs'
 
 const count = Number(process.env.VUE_DOCTOR_SESSION_BENCH_FILES ?? 600)
 assert(Number.isInteger(count) && count >= 512, 'Session benchmark requires at least 512 SFCs.')

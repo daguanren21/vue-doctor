@@ -4,8 +4,8 @@ import type {
   DoctorRulePack,
   DoctorRulePackContext,
   DoctorRulePackResult
-} from '@vue-doctor/core'
-import { createSourceDocument, type SourceDocument } from '@vue-doctor/source'
+} from '@daguanren21/vue-doctor-core'
+import { createSourceDocument, type SourceDocument } from '@daguanren21/vue-doctor-source'
 
 vi.mock('oxc-parser', async (importOriginal) => {
   const original = await importOriginal<typeof import('oxc-parser')>()
@@ -99,7 +99,7 @@ function check(result: DoctorRulePackResult, code: string): DoctorRuleCheck {
   return found
 }
 
-describe('@vue-doctor/rules', () => {
+describe('@daguanren21/vue-doctor-rules', () => {
   beforeEach(() => {
     vi.mocked(parseOxc).mockClear()
   })

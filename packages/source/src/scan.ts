@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import tsParser from '@typescript-eslint/parser'
-import { collectScriptBindingFacts, resolveLexicalBinding } from './bindings.js'
+import { collectScriptBindingFacts, resolveLexicalBinding, type LexicalBindingFact } from './bindings.js'
 import { discoverSourceFiles } from './files.js'
 import { collectDirectImportOrigins } from './origins.js'
 import { collectGlobalPlugins } from './plugins.js'
@@ -14,6 +14,7 @@ import type {
   StaticKnowledge,
   ScanVueSourceUsageOptions,
   SourceLocation,
+  VueComponentOrigin,
   VueComponentUsage,
   VueDirectiveUsage,
   VueEventUsage,
@@ -228,11 +229,24 @@ function scanVueFile(
     return { components: [], globalPlugins, blocks: parsed.blocks, parsed }
   }
 
-  const origins = new Map(scriptPrograms.flatMap((program) => [...collectDirectImportOrigins(program)]))
   const components: VueComponentUsage[] = []
   const setupIndex = parsed.blocks.find((block) => block.kind === 'script')?.status === 'available' ? 1 : 0
   const setupProgram = parsed.blocks.find((block) => block.kind === 'script-setup')?.status === 'available'
     ? scriptPrograms[setupIndex] : undefined
+  const scriptBindings = scriptPrograms.map((program) => collectScriptBindingFacts(program))
+  const origins = new Map(scriptPrograms.flatMap((program, index) => [
+    ...collectDirectImportOrigins(program, { scriptSetup: Boolean(setupProgram), bindings: scriptBindings[index]! })
+  ]))
+  const setupBindings = new Map<string, LexicalBindingFact>()
+  if (setupProgram) {
+    // Normal-script imports are also exposed by a script-setup SFC. Its own
+    // declarations take precedence, including non-imports that cannot prove an origin.
+    for (const [index, program] of scriptPrograms.entries()) {
+      for (const binding of scriptBindings[index]?.scopes[0]?.bindings ?? []) {
+        if (program === setupProgram || binding.kind === 'import') setupBindings.set(binding.name, binding)
+      }
+    }
+  }
   const setupConstants = setupProgram ? collectSetupBindings(setupProgram, templateBody) : undefined
   const handlers = new Map(scriptPrograms.flatMap((program) => [
     ...collectHandlerDeclarations(program, templateBody, program === setupProgram ? setupConstants : undefined)
@@ -250,7 +264,7 @@ function scanVueFile(
     const tag = node.rawName ?? node.name ?? ''
     const componentName = normalizeComponentName(tag)
     const attributes = node.startTag?.attributes ?? []
-    const origin = origins.get(componentName) ?? origins.get(tag)
+    const origin = resolveTemplateComponentOrigin(tag, origins, setupBindings, shadowed)
     components.push({
       file,
       tag,
@@ -269,6 +283,36 @@ function scanVueFile(
   })
 
   return { components, globalPlugins, blocks: parsed.blocks, parsed }
+}
+
+function resolveTemplateComponentOrigin(
+  tag: string,
+  origins: ReadonlyMap<string, VueComponentOrigin>,
+  setupBindings: ReadonlyMap<string, LexicalBindingFact>,
+  shadowed: ReadonlySet<string>
+): VueComponentOrigin | undefined {
+  const [name = '', member, ...rest] = tag.split('.')
+  const camelName = name.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase())
+  const names = [...new Set([name, camelName, `${camelName.charAt(0).toUpperCase()}${camelName.slice(1)}`])]
+  if (names.some((candidate) => shadowed.has(candidate))) return undefined
+  const bindings = names.flatMap((candidate) => {
+    const binding = setupBindings.get(candidate)
+    return binding ? [binding] : []
+  })
+  // Differently cased bindings can have different compiler binding categories.
+  // Do not infer which value wins from a normalized tag alone.
+  if (bindings.length > 1) return undefined
+  const binding = bindings[0]
+  const origin = binding
+    ? origins.get(binding.name)
+    : names.map((candidate) => origins.get(candidate)).find((candidate) => candidate !== undefined)
+  if (!origin) return undefined
+  if (binding && (binding.kind !== 'import'
+    ? origin.kind !== 'local-import' || origin.importedName !== undefined
+    : origin.importSource !== binding.source || origin.importedName !== binding.imported)) return undefined
+  if (!member) return origin
+  if (rest.length || origin.importedName !== '*' || origin.templateBinding !== 'script-setup') return undefined
+  return { ...origin, importedName: member }
 }
 
 function scriptPreparedDocument(
@@ -393,7 +437,7 @@ function visitTemplateNode(
 
 function isComponentNode(node: TemplateNode) {
   const tag = node.rawName ?? node.name ?? ''
-  return node.type === 'VElement' && tag !== 'template' && (isPascalCase(tag) || tag.includes('-') || tag === 'Component')
+  return node.type === 'VElement' && tag !== 'template' && (isPascalCase(tag) || tag.includes('-') || tag.includes('.'))
 }
 
 function toProp(attribute: TemplateAttribute, source: string, constants?: ReadonlyMap<string, StaticKnowledge>, shadowed?: ReadonlySet<string>): VuePropUsage[] {

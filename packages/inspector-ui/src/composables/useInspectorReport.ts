@@ -1,6 +1,6 @@
 import { computed, getCurrentScope, onScopeDispose, readonly, ref } from 'vue'
-import type { DoctorReport } from '@vue-doctor/core'
-import { getDoctorReportSchemaVersion, isSupportedDoctorReport } from '@vue-doctor/core/report-schema'
+import type { DoctorReport } from '@daguanren21/vue-doctor-core'
+import { getDoctorReportSchemaVersion, isSupportedDoctorReport } from '@daguanren21/vue-doctor-core/report-schema'
 
 export function useInspectorReport(endpoint = 'api/report.json', request: typeof fetch = fetch) {
   const report = ref<DoctorReport | null>(null)

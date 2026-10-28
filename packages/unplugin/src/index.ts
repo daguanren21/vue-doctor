@@ -1,4 +1,4 @@
-import { createDoctorAnalysisSession, runDoctor } from '@vue-doctor/runner'
+import { createDoctorAnalysisSession, runDoctor } from '@daguanren21/vue-doctor-runner'
 import { createUnplugin } from 'unplugin'
 import { createVueDoctorUnpluginFactory } from './plugin.js'
 
@@ -14,7 +14,7 @@ export const vueDoctorRolldown = vueDoctorUnplugin.rolldown
 export const vueDoctorEsbuild = vueDoctorUnplugin.esbuild
 
 export { createVueDoctorUnpluginFactory } from './plugin.js'
-export type { VueDoctorUnpluginOptions } from './plugin.js'
+export type { VueDoctorRunMode, VueDoctorUnpluginOptions, VueDoctorViteOptions } from './options.js'
 export {
   createVueDoctorPlugin,
   inspectorBasePath,
@@ -22,8 +22,4 @@ export {
   inspectorReportPath,
   inspectorSnippetPath
 } from './vite.js'
-export type {
-  VueDoctorRunMode,
-  VueDoctorViteOptions,
-  VueDoctorViteServices
-} from './vite.js'
+export type { VueDoctorViteServices } from './vite.js'

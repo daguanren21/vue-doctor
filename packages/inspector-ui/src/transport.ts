@@ -26,7 +26,7 @@ import {
   type QueryRulesRequest,
   type RunInspectorRequest,
   type RunInspectorResult
-} from '@vue-doctor/inspector-protocol'
+} from '@daguanren21/vue-doctor-inspector-protocol'
 
 export type InspectorStateListener = (state: Readonly<InspectorSharedState>) => void
 export type InspectorStateErrorListener = (error: Error) => void

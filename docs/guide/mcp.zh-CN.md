@@ -21,14 +21,14 @@ CLI Inspector 或 Vite 宿主已运行时，使用 Devframe connector：
 
 先调用 `devframe_connect_list-instances`，选择目标项目实例，再通过 `devframe_connect_call-tool` 传入端口、工具名和参数。独立 Inspector 会登记实例，并在 `/vue-doctor/__mcp` 提供 MCP。接入原生 Vite DevTools Hub 时，实例发现、MCP endpoint 和认证由宿主管理。自定义挂载 base 时，MCP 路径也随之变化。Connector 会自动携带所需的 `Origin` header，直接调用 HTTP 的客户端也需传入实例的 origin。
 
-项目没有运行 Inspector 或 dev server 时，构建本仓库，并将独立 stdio 入口指向构建后的 CLI：
+项目没有运行 Inspector 或 dev server 时，按[安装与扫描](../../README.zh-CN.md#安装与扫描)配置 `@daguanren21/vue-doctor`，再使用项目已安装的 CLI 启动独立 stdio 服务：
 
 ```json
 {
   "mcpServers": {
     "vue-doctor": {
-      "command": "node",
-      "args": ["/absolute/path/to/vue-doctor/packages/vue-doctor/dist/cli.mjs", "mcp", "/path/to/project"]
+      "command": "pnpm",
+      "args": ["--dir", "/path/to/project", "exec", "vue-doctor", "mcp", "/path/to/project"]
     }
   }
 }
@@ -52,7 +52,7 @@ MCP 工具负责诊断，不应用源码编辑、不打开编辑器，也不把�
 
 ## 安装 Agent Skill
 
-将本仓库构建后的包链接到消费项目后，把其内置 skill 安装到本地 coding agents：
+在消费项目中安装 `@daguanren21/vue-doctor` 后，把其内置 skill 安装到本地 coding agents：
 
 ```bash
 pnpm exec vue-doctor install

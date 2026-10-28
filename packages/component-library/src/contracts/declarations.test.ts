@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { API } from 'typescript/unstable/sync'
+import { API } from 'typescript-native/unstable/sync'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { createComponentLibraryEvidence } from '../evidence.js'
 import {
@@ -229,6 +229,119 @@ export declare const Stream: {
       minArity: 1,
       maxArity: null
     }])
+  })
+
+  test('uses semantic flags for unnamed inline tuple optional rest and required undefined elements', async () => {
+    const evidence = await createDeclarationFixture({
+      'es/index.d.ts': `
+type Optional = [string, number?]
+type Many = [string, ...number[]]
+type RequiredUndefined = [string, number | undefined]
+export declare class Stream {
+  $emit: {
+    (event: 'many', ...args: [string, ...number[]]): void
+    (event: 'optional', ...args: [string, number?]): void
+    (event: 'required-undefined', ...args: [string, number | undefined]): void
+    (event: 'aliased-many', ...args: Many): void
+    (event: 'aliased-optional', ...args: Optional): void
+    (event: 'aliased-required-undefined', ...args: RequiredUndefined): void
+    (event: 'prefixed-many', prefix: string, ...args: [string, ...number[]]): void
+    (event: 'prefixed-optional', prefix: string, ...args: [string, number?]): void
+    <T extends number[]>(event: 'variadic', ...args: [string, ...T]): void
+    (event: 'named-many', ...args: [value: string, ...tail: number[]]): void
+  }
+}
+`
+    })
+    const result = await readTypeScriptContracts(evidence)
+    const events = result.components.get('Stream')!.events.entries
+
+    expect(result.problems).toEqual([])
+    for (const name of ['many', 'aliased-many', 'variadic']) {
+      expect(events.get(name)?.signatures, name).toEqual([{
+        parameters: [
+          { name: undefined, optional: false, rest: false },
+          { name: undefined, optional: false, rest: true }
+        ],
+        minArity: 1,
+        maxArity: null
+      }])
+    }
+    for (const name of ['optional', 'aliased-optional']) {
+      expect(events.get(name)?.signatures, name).toEqual([{
+        parameters: [
+          { name: undefined, optional: false, rest: false },
+          { name: undefined, optional: true, rest: false }
+        ],
+        minArity: 1,
+        maxArity: 2
+      }])
+    }
+    for (const name of ['required-undefined', 'aliased-required-undefined']) {
+      expect(events.get(name)?.signatures, name).toEqual([{
+        parameters: [
+          { name: undefined, optional: false, rest: false },
+          { name: undefined, optional: false, rest: false }
+        ],
+        minArity: 2,
+        maxArity: 2
+      }])
+    }
+    expect(events.get('prefixed-many')?.signatures).toEqual([{
+      parameters: [
+        { name: 'prefix', optional: false, rest: false },
+        { name: undefined, optional: false, rest: false },
+        { name: undefined, optional: false, rest: true }
+      ],
+      minArity: 2,
+      maxArity: null
+    }])
+    expect(events.get('prefixed-optional')?.signatures).toEqual([{
+      parameters: [
+        { name: 'prefix', optional: false, rest: false },
+        { name: undefined, optional: false, rest: false },
+        { name: undefined, optional: true, rest: false }
+      ],
+      minArity: 2,
+      maxArity: 3
+    }])
+    expect(events.get('named-many')?.signatures).toEqual([{
+      parameters: [
+        { name: 'value', optional: false, rest: false },
+        { name: 'tail', optional: false, rest: true }
+      ],
+      minArity: 1,
+      maxArity: null
+    }])
+  })
+
+  test('uses the same semantic tuple flags for listener prop payloads', async () => {
+    const evidence = await createDeclarationFixture({
+      'es/index.d.ts': `
+type Optional = [string, number?]
+export declare class Stream {
+  $props: {
+    onMany?: (...args: [string, ...number[]]) => void
+    onOptional?: (...args: [string, number?]) => void
+    onAliased?: (...args: Optional) => void
+  }
+}
+`
+    })
+    const result = await readTypeScriptContracts(evidence)
+    const events = result.components.get('Stream')!.events.entries
+
+    expect(result.problems).toEqual([])
+    expect(events.get('many')).toMatchObject({
+      source: 'listener-prop',
+      signatures: [{ minArity: 1, maxArity: null }]
+    })
+    for (const name of ['optional', 'aliased']) {
+      expect(events.get(name), name).toMatchObject({
+        source: 'listener-prop',
+        signatures: [{ minArity: 1, maxArity: 2 }]
+      })
+    }
   })
 
   test('uses open, closed, and unknown emit boundaries from the event-name type', async () => {

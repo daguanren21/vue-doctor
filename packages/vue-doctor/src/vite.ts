@@ -1,5 +1,7 @@
-export { vueDoctorVite as vueDoctor } from '@vue-doctor/unplugin'
-export type {
-  VueDoctorRunMode,
-  VueDoctorUnpluginOptions as VueDoctorViteOptions
-} from '@vue-doctor/unplugin'
+import type { Plugin as VitePlugin } from 'vite'
+import { vueDoctorVite } from '@daguanren21/vue-doctor-unplugin'
+import type { VueDoctorViteOptions } from '@daguanren21/vue-doctor-unplugin/options'
+
+export type { VueDoctorRunMode, VueDoctorViteOptions } from '@daguanren21/vue-doctor-unplugin/options'
+
+export const vueDoctor: (options?: VueDoctorViteOptions) => VitePlugin = vueDoctorVite

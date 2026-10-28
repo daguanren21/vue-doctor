@@ -1,4 +1,4 @@
-import { createComponentLibraryEvidence } from '@vue-doctor/component-library'
+import { createComponentLibraryEvidence } from '@daguanren21/vue-doctor-component-library'
 import {
   applyDoctorConfigToDiagnostics,
   applyDoctorRuleMetadata,
@@ -12,7 +12,7 @@ import {
   resolveConfiguredUiLibraries,
   resolveDoctorRunOptions,
   validateConfiguredDoctorRuleCodes
-} from '@vue-doctor/core'
+} from '@daguanren21/vue-doctor-core'
 import type {
   DoctorCoverage,
   DoctorConfig,
@@ -27,20 +27,20 @@ import type {
   RuleSeveritySetting,
   SkippedCheck,
   UiLibraryConfig
-} from '@vue-doctor/core'
+} from '@daguanren21/vue-doctor-core'
 import {
   discoverProjectEslintRulePack,
   type DiscoveredProjectEslintRulePack,
   type ProjectEslintPackageRequest
-} from '@vue-doctor/rule-pack-eslint'
-import { diagnoseComponentLibraryUsageResult } from '@vue-doctor/rule-pack-component-library'
-import { componentLibraryRuleDefinitions } from '@vue-doctor/rule-pack-component-library/rules'
+} from '@daguanren21/vue-doctor-rule-pack-eslint'
+import { diagnoseComponentLibraryUsageResult } from '@daguanren21/vue-doctor-rule-pack-component-library'
+import { componentLibraryRuleDefinitions } from '@daguanren21/vue-doctor-rule-pack-component-library/rules'
 import {
   discoverTargetFiles,
   extractDoctorSuppressions,
   readSourceDocuments,
   type TargetFiles
-} from '@vue-doctor/source'
+} from '@daguanren21/vue-doctor-source'
 import { access, readdir, realpath, stat } from 'node:fs/promises'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 import { scanDoctorSource } from './source-analysis.js'
@@ -51,6 +51,7 @@ import { createBuiltinDoctorChecks } from './builtin-checks.js'
 import { createBuiltinRuleComposition } from './builtin-composition.js'
 import { buildProjectContext, contextualizeSourceUsage } from './context.js'
 import { finalizeDoctorReport } from './report-contract.js'
+import { isFrameworkComponentUsage } from './framework-components.js'
 import {
   createDoctorAnalysisSession,
   type DoctorRunGenerationContext
@@ -201,8 +202,9 @@ export async function runDoctorGeneration(
     if (preparedEslint) validateProjectEslintOverrides(configuredRules, preparedEslint.hostDisabledRuleCodes)
     const source = contextualizeSourceUsage(builtContext, scannedSource.source)
     const allVueDiagnostics = scannedSource.diagnostics
+    const libraryUsages = source.components.filter((usage) => !isFrameworkComponentUsage(usage, builtContext.projectContext))
     const observedPackageNames = new Set([
-      ...source.components.flatMap((usage) => usage.origin?.package?.packageName
+      ...libraryUsages.flatMap((usage) => usage.origin?.package?.packageName
         ? [usage.origin.package.packageName]
         : []),
       ...source.globalPlugins.flatMap((plugin) => plugin.package.packageName
@@ -221,7 +223,7 @@ export async function runDoctorGeneration(
           runtime: config.ui?.runtimeContracts === true,
           cache: true,
           package: packageIdentity,
-          observedSubpaths: source.components
+          observedSubpaths: libraryUsages
             .filter((usage) => usage.origin?.kind === 'direct-import'
               && usage.origin.package
               && packageIdentity.importRoots.includes(usage.origin.package.packageName))

@@ -27,7 +27,7 @@ CLI 显式指定 `--config` 时直接使用该路径，不进行自动发现。
 ```
 
 ```ts
-import { defineDoctorConfig } from 'vue-doctor'
+import { defineDoctorConfig } from '@daguanren21/vue-doctor'
 
 export default defineDoctorConfig({
   ui: {
@@ -70,6 +70,12 @@ Vue 2 构造器注册通过同步运行时 import 关联到使用相同构造器
 
 扫描到的组件若不在已发现的应用图中，不能借用该应用的全局注册。应显式 import 并局部注册依赖，或建立真实且可静态发现的应用 import 路径。Doctor 不会通过排除这些文件或虚构应用归属让 coverage 变成完整。
 
+已确认 Vue 3 中的 `Transition`、`TransitionGroup`、`KeepAlive`、`Teleport`、`Suspense` 编译器保留标签属于框架本身，不是第三方组件库目标，不需要应用入口来证明这一身份。import 别名还必须具备真实的 template 暴露证据，以及所属包的 canonical Vue 3 identity。组件事实仍提供给自定义规则；组件库归属保持 unmatched，不虚构组件库 contract。
+
+namespace member 标签要求已证明的 script-setup 暴露。把整个 namespace 注册成 Options 组件不会暴露其成员，应使用 `components: { Group: Runtime.TransitionGroup }` 与 `<Group />`。对已扫描到的组件用法，静态 `is="vue:..."` 按实际目标分类：已知内置目标仍归框架，未知目标不会借用原标签的豁免。
+
+未知全局组件、未暴露的 import、不确定的注册和未支持的 Vue subpath 仍保留覆盖缺口。Vue 2、主运行时未知，以及只有 alias 但没有主 Vue identity 的 inventory 仍采用保守判断；这项豁免不会自行选择运行时，也不会把所有名为 `vue` 的 import 都当作真实 Vue。
+
 字面量 `import.meta.glob` 调用会把候选模块加入应用可达图，但不扩大诊断目标。支持相对路径、项目根路径、只有一个显式映射目标的别名，以及静态 pattern 数组和排除项。懒加载候选不证明插件已经安装；只有 `{ eager: true }` 才产生同步模块边。动态 pattern/options、`?raw` 等资源 query、不支持的选项和有歧义的别名仍保持未解析。展开时排除依赖目录、嵌套包和越界 symlink 路径。
 
 Vite 只读取文件名的 `Object.keys(import.meta.glob(...))` 形式不产生模块边，即使设置了 `eager: true`。展开时会保留目录名中 glob 元字符的字面含义，并关闭 extglob 操作符，与 Vite 的模块转换保持一致。动态目录之后含有需要归一化的 `.` 或重复分隔符时，pattern 保持未解析，因为 Vite 开发与生产转换可能加载不同的模块。
@@ -81,7 +87,7 @@ Doctor 默认在发现 `eslint.config.*` 时使用消费项目安装的 ESLint�
 在 Doctor 配置的 `eslint` 中选择模式或指定 ESLint 配置：
 
 ```ts
-import { defineDoctorConfig } from 'vue-doctor'
+import { defineDoctorConfig } from '@daguanren21/vue-doctor'
 
 export default defineDoctorConfig({
   eslint: {
@@ -114,58 +120,6 @@ ESLint ignore 仅影响 ESLint 检查，Vue 与组件契约分析仍使用 Docto
 
 Vue 模板正文允许比较符号、字符列表等场景中的字面量 `<`；Vue descriptor 与模板 AST 均保留该文本时，Doctor 不再把它误判为解析失败。错误闭合标签、重复顶层块和空 SFC 仍保留源码覆盖不足，但不会阻止可读字节交给项目 ESLint。
 
-## 可选的项目死代码分析
-
-`@vue-doctor/rule-pack-dead-code` 通过 Knip 提供按需开启的项目死代码分析。它是独立的可选包，**不会随默认 runner 自动捆绑或启用**。当前 workspace 版本为 `0.0.0`，尚未发布。按[快速上手](../../README.zh-CN.md#快速上手)构建本仓库并链接 `vue-doctor` 后，还需将构建好的规则包链接到消费项目：
-
-```bash
-pnpm --dir /path/to/your-project link /absolute/path/to/vue-doctor/packages/rule-pack-dead-code
-```
-
-在可执行的 `doctor.config.ts` 中注册：
-
-```ts
-import { defineDoctorConfig } from 'vue-doctor'
-import { createDeadCodeRulePack } from '@vue-doctor/rule-pack-dead-code'
-
-export default defineDoctorConfig({
-  rulePacks: [createDeadCodeRulePack({ timeoutMs: 120000 })],
-  rules: {
-    'dead-code/unused-export': 'error',
-    'dead-code/unused-type': 'off'
-  },
-  failOn: 'error',
-  failOnIncompleteCoverage: true
-})
-```
-
-注册规则包后，以下四项检查的默认严重度均为 `warning`：
-
-| Code | 报告内容 |
-| --- | --- |
-| `dead-code/unused-file` | 从配置的入口点不可达的文件。 |
-| `dead-code/unused-export` | 在项目图中没有消费者的导出值。 |
-| `dead-code/unused-type` | 在项目图中没有消费者的导出类型、接口和枚举。 |
-| `dead-code/duplicate-export` | 同一模块中被多次导出的符号。 |
-
-通过 Doctor 的 `rules` 修改严重度，或将任意 code 设为 `'off'`。四项全部关闭或目标文件集合为空时，不执行 Knip 分析。
-
-`createDeadCodeRulePack()` 默认使用 Knip 的配置发现机制，超时为 `120000` 毫秒（两分钟）。可选的 `configFile` 用于选择已有的 Knip 配置，例如 `createDeadCodeRulePack({ configFile: './knip.json' })`；支持相对 Doctor 项目根目录的路径或绝对路径。`timeoutMs` 用于调整超时。Knip 配置与选择 Doctor 配置的 CLI `--config` 相互独立。
-
-项目图由 Knip 原生的 `entry`、`project`、`ignore` 和插件配置决定。Doctor 控制这四类受支持检查是否运行及报告严重度，覆盖 Knip 针对这些检查的 `include`、`exclude` 和 `rules` 设置。图的输入在 Knip 中配置，检查开关与严重度在 Doctor 中配置。
-
-即使使用 `--scope`、`--changed` 或显式选择文件，分析仍会从磁盘读取**配置所定义的完整项目图**。只有诊断结果按 Doctor 的目标文件过滤；目标范围外的消费者仍参与分析。缩小目标范围不保证图分析更快。
-
-Knip 报告的 import 缺失或无法解析、配置或插件错误，以及覆盖不足相关提示，都会使所有启用的死代码检查变为 `unavailable`；分析超时也会如此。报告保留必需的 `skippedChecks` 和覆盖不足，而不是判定项目干净。示例中的 `failOnIncompleteCoverage: true` 会让此类覆盖缺口导致运行失败，即使没有产生任何诊断。
-
-使用 Knip 原生 `workspaces` 配置时，应把 `entry`、`project` 模式放在相应工作区条目中。被忽略的顶层模式（`entry-top-level` / `project-top-level`）属于覆盖缺口，不代表这些路径已成功检查。
-
-这些图覆盖检查依赖 Knip 报告的缺口；完整项目图分析不等于全项目语法验证。Doctor 现有的源码解析覆盖仍仅限于选中的源码目标。
-
-只加载受信任的可执行 Knip 配置和插件。分析在子进程中运行，以隔离其输出与 Doctor 报告。配置或插件发送的格式不合法的 IPC 消息会被忽略，不会覆盖有效分析响应。超时会终止直接的 Knip 工作进程并释放 Doctor 的报告通道，但不会管理项目配置自行启动的任意辅助进程。这种隔离**不是安全沙箱**。
-
-这些诊断来自静态项目图：动态入口或 Knip 无法发现的消费者可能导致误报。删除或合并代码前，请先确认图配置与实际使用情况。本规则包不执行自动修复。
-
 ## CI 与 CLI 覆盖
 
 ```bash
@@ -190,7 +144,7 @@ pnpm exec vue-doctor ci install --fail-on warning --force
 
 生成的工作流默认对 error 诊断和覆盖不足启用门禁。
 
-工作流只运行项目已安装的 Vue Doctor 可执行文件（Yarn 项目使用本地命令解析），不会按注册表包名下载 CLI。启用 CI 前，应通过可复现的 workspace 或构建产物依赖提供本仓库的工具；快速上手中的开发机本地链接不能直接用于托管 runner。
+工作流只运行项目已安装的 Vue Doctor 可执行文件（Yarn 项目使用本地命令解析），不会按注册表包名下载 CLI。启用 CI 前，将 `@daguanren21/vue-doctor` 加入项目开发依赖，并提交 package manifest 和 lockfile，确保 runner 安装相同版本。注册表发布前，可改用可复现的 workspace 或构建产物依赖；开发机的源码链接不能直接用于托管 runner。
 
 ## 变更文件扫描
 

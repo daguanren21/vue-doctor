@@ -1,8 +1,12 @@
 {
-  "name": "@vue-doctor/unplugin",
-  "version": "0.0.0",
+  "name": "@daguanren21/vue-doctor-unplugin",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
   "type": "module",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "engines": {
     "node": ">=20.19.0"
   },
@@ -10,12 +14,16 @@
     ".": {
       "types": "./dist/index.d.mts",
       "import": "./dist/index.mjs"
+    },
+    "./options": {
+      "types": "./dist/options.d.mts",
+      "import": "./dist/options.mjs"
     }
   },
   "peerDependencies": {
+    "@rspack/core": ">=1.0.0",
     "vite": ">=5.0.0",
-    "webpack": ">=5.0.0",
-    "@rspack/core": ">=1.0.0"
+    "webpack": ">=5.0.0"
   },
   "peerDependenciesMeta": {
     "vite": {
@@ -29,14 +37,14 @@
     }
   },
   "dependencies": {
-    "@vue-doctor/core": "workspace:*",
-    "@vue-doctor/inspector": "workspace:*",
-    "@vue-doctor/inspector-ui": "workspace:*",
-    "@vue-doctor/runner": "workspace:*",
+    "@daguanren21/vue-doctor-core": "workspace:*",
+    "@daguanren21/vue-doctor-inspector": "workspace:*",
+    "@daguanren21/vue-doctor-inspector-ui": "workspace:*",
+    "@daguanren21/vue-doctor-runner": "workspace:*",
     "unplugin": "3.3.0"
   },
   "scripts": {
-    "build": "tsdown src/index.ts --format esm --dts",
+    "build": "tsdown src/index.ts src/options.ts --format esm --dts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   }
 }

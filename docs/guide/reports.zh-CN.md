@@ -7,7 +7,7 @@
 公开 facade 返回的报告与 CLI、Vite 集成使用的是同一个模型：
 
 ```ts
-import { runDoctor } from 'vue-doctor'
+import { runDoctor } from '@daguanren21/vue-doctor'
 
 const report = await runDoctor()
 ```
@@ -64,6 +64,8 @@ vue-doctor --json-out .vue-doctor/report.json
 Vue API 检查追踪来自 `vue` 的真实导入，支持 named alias 和 namespace，并排除局部同名遮蔽。编译宏只在未遮蔽的 `<script setup>` 中识别。自动导入的裸名称需要集成方提供明确证据，名称本身不能证明它是 Vue API。
 
 缺失事件、slot 或 model 更新事件，只在相关 acceptance 边界被证明 closed 时报告 unsupported；open 边界接受使用，unknown 或冲突边界记录必需检查跳过。事件处理器可以少接参数、改名或忽略参数。payload 诊断要求完整签名，只有所有重载提供的参数数量都少于处理器必需参数时才触发；optional 与 rest 信息会保留。
+
+Prop 检查保留 Vue 的值语义：`count="1"` 是字符串，`:count="1"` 才是数字。布尔属性的省略值、空字符串和属性名字符串遵循 Vue 转换规则。已安装契约无法确定 String/Boolean 构造器优先级，或受类型约束的动态值无法解析时，类型检查保持不完整，不会凭空认定兼容。
 
 `diagnostics` 包含针对已检测组件用法的确定性发现，例如不支持的 prop、event、slot 或 `v-model`，以及不兼容的事件 payload。每条 diagnostic 都包含 code、severity、confidence、evidence 和 suggested fixes。
 

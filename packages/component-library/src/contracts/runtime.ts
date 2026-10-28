@@ -1,9 +1,9 @@
 import { createRequire } from 'node:module'
 import { existsSync } from 'node:fs'
 import { basename, dirname, extname, join, relative } from 'node:path'
-import { readFile } from 'node:fs/promises'
-import { babelParse, compileScript, type SFCDescriptor, type SFCScriptBlock } from '@vue/compiler-sfc'
-import { API } from 'typescript/unstable/sync'
+import { readFile, realpath } from 'node:fs/promises'
+import { babelParse, type SFCDescriptor, type SFCScriptBlock } from '@vue/compiler-sfc'
+import { API } from 'typescript-native/unstable/sync'
 import {
   isCallExpression,
   isArrowFunction,
@@ -29,11 +29,13 @@ import {
   type Node,
   type ObjectLiteralExpression,
   type SourceFile
-} from 'typescript/unstable/ast'
+} from 'typescript-native/unstable/ast'
 import { listSearchableFiles } from '../artifacts.js'
 import type { ComponentLibraryEvidence } from '../types.js'
-import { createRuntimeInteractionReader, type RuntimeInteractionEvidence, type RuntimeOptionEvidence, type RuntimePublicComponent } from './runtime-interactions.js'
+import { createRuntimeInteractionReader } from './runtime-interactions.js'
 import { parseRuntimeSfc } from './runtime-sfc.js'
+import type { RuntimeInteractionEvidence, RuntimeInteractionReader, RuntimePublicComponent } from './runtime-interactions.js'
+import type { CompiledRuntimeSfc } from './runtime-sfc.js'
 import type {
   AttributeForwardTarget,
   ComponentContract,
@@ -92,7 +94,8 @@ export async function readRuntimeFallthrough(
   if (!evidence.package.packageRoot || evidence.artifacts.runtimeEntries.length === 0) {
     return emptyRuntimeFallthroughResult()
   }
-  const files = await listSearchableFiles(evidence.package.packageRoot)
+  const packageRoot = await realpath(evidence.package.packageRoot)
+  const files = await listSearchableFiles(packageRoot)
   const readInteractions = createRuntimeInteractionReader(files)
   const filesByPath = new Map(files.map(file => [file.path, file]))
   const candidateFiles = files.filter((file) => (
@@ -118,7 +121,7 @@ export async function readRuntimeFallthrough(
     ...candidates.filter(({ compiledRuntime }) => compiledRuntime).map(({ file }) => file.path),
     ...(domPath ? [domPath] : [])
   ]
-  const api = new API({ cwd: evidence.package.packageRoot })
+  const api = new API({ cwd: packageRoot })
   let snapshot: ReturnType<API['updateSnapshot']> | undefined
 
   try {
@@ -158,7 +161,7 @@ export async function readRuntimeFallthrough(
       }
       if (extname(file.path) === '.vue') {
         const fallbackName = toPascalCase(basename(file.path, '.vue'))
-        const sfcEvidence = await readSfcEvidence(text, file.path, nativeAttributes, readInteractions.readSfc)
+        const sfcEvidence = await readSfcEvidence(text, file.path, nativeAttributes, readInteractions)
         const name = sfcEvidence.name ?? fallbackName
         if (sfcEvidence.problem) {
           problems.push({ message: sfcEvidence.problem, path: file.path })
@@ -225,7 +228,17 @@ export async function readRuntimeFallthrough(
 
     const publicComponents: ComponentContract[] = []
     const publicDynamicSlots = new Set<string>()
-    const publicEvidence = await readInteractions.readPublicComponents(evidence.artifacts.runtimeEntries, evidence.package.packageRoot)
+    const runtimeEntries = await Promise.all(evidence.artifacts.runtimeEntries.map(async (entry) => {
+      try {
+        const path = await realpath(entry.path)
+        return path === entry.path ? entry : { ...entry, path }
+      } catch (error) {
+        if (error && typeof error === 'object' && 'code' in error
+          && (error.code === 'ENOENT' || error.code === 'ENOTDIR')) return entry
+        throw error
+      }
+    }))
+    const publicEvidence = await readInteractions.readPublicComponents(runtimeEntries, packageRoot)
     const identities = new Map<string, RuntimePublicComponent[]>()
     const nameIdentities = new Map<string, Set<string>>()
     const exportIdentities = new Map<string, Set<string>>()
@@ -250,7 +263,7 @@ export async function readRuntimeFallthrough(
       const file = filesByPath.get(component.file)
       if (!file) continue
       const sfc = component.descriptor
-        ? await readSfcEvidence(await readFile(file.path, 'utf8'), file.path, nativeAttributes, readInteractions.readSfc)
+        ? await readSfcEvidence(await readFile(file.path, 'utf8'), file.path, nativeAttributes, readInteractions)
         : undefined
       const explicitName = component.name && nameIdentities.get(component.name)?.size === 1 ? component.name : undefined
       const name = explicitName ?? exports.find(name => name !== 'default')
@@ -259,7 +272,7 @@ export async function readRuntimeFallthrough(
       for (const value of component.propsOptions) {
         for (const [name, prop] of readPropsValueNode(value)) publicProps.set(name, prop)
       }
-      // Script setup's macro props supplement ordinary options; never infer a closed surface.
+      // Effective script-setup props take precedence over ordinary and inherited options.
       if (component.descriptor?.scriptSetup && sfc) {
         for (const [name, prop] of sfc.props) publicProps.set(name, prop)
       }
@@ -273,7 +286,7 @@ export async function readRuntimeFallthrough(
       const provenance = uniqueSources([file.path, ...group.flatMap(component => component.interactionSources)].map(path => ({
         source: 'runtime' as const,
         path,
-        relativePath: filesByPath.get(path)?.relativePath ?? relative(evidence.package.packageRoot!, path)
+        relativePath: filesByPath.get(path)?.relativePath ?? relative(packageRoot, path)
       })))
       publicComponents.push({
         name,
@@ -363,6 +376,8 @@ type SfcScriptNode = {
   arguments?: SfcScriptNode[]
   declarations?: SfcScriptNode[]
   properties?: SfcScriptNode[]
+  typeParameters?: { params?: SfcScriptNode[] }
+  [key: string]: unknown
 }
 
 interface SfcRuntimeEvidence {
@@ -381,7 +396,7 @@ async function readSfcEvidence(
   source: string,
   file: string,
   nativeAttributes: Map<string, string[]>,
-  readInteractions: (descriptor: SFCDescriptor, file: string) => Promise<RuntimeOptionEvidence>
+  readInteractions: Pick<RuntimeInteractionReader, 'readSfc' | 'compileSfc'>
 ): Promise<SfcRuntimeEvidence> {
   const { descriptor, errors } = parseRuntimeSfc(source, file)
   if (errors.length > 0) {
@@ -395,15 +410,18 @@ async function readSfcEvidence(
       problem: `Vue could not parse the published SFC: ${errors.map(String).join('; ')}`
     }
   }
-  const compiled = compileSfcScript(descriptor, file)
-  const props = compiled && descriptor.scriptSetup ? readSfcProps(compiled) : new Map<string, PropContract>()
-  const interactions = await readInteractions(descriptor, file)
+  const compiled = readInteractions.compileSfc(descriptor)
+  const props = new Map<string, PropContract>()
+  const interactions = await readInteractions.readSfc(descriptor, file)
   for (const value of interactions.propsOptions) {
     for (const [name, prop] of readPropsValueNode(value)) props.set(name, prop)
   }
+  if (compiled?.propsResolved && descriptor.scriptSetup) {
+    for (const [name, prop] of readSfcProps(compiled)) props.set(name, prop)
+  }
   const slotEvidence = readSfcSlots(descriptor)
   return {
-    name: compiled ? readSfcComponentName(compiled) : undefined,
+    name: compiled ? readSfcComponentName(compiled.script) : undefined,
     props,
     ...interactions,
     ...(descriptor.template?.attrs.functional !== undefined ? { vue2Model: null } : {}),
@@ -415,17 +433,6 @@ async function readSfcEvidence(
   }
 }
 
-function compileSfcScript(
-  descriptor: SFCDescriptor,
-  file: string
-): SFCScriptBlock | undefined {
-  if (!descriptor.script && !descriptor.scriptSetup) return undefined
-  try {
-    return compileScript(descriptor, { id: file })
-  } catch {
-    return undefined
-  }
-}
 
 function readSfcComponentName(compiled: SFCScriptBlock): string | undefined {
   const statements = [
@@ -491,22 +498,11 @@ function visitSfcScript(
   roots: SfcScriptNode[],
   visit: (node: SfcScriptNode) => void
 ): void {
-  const walk = (node: SfcScriptNode): void => {
-    visit(node)
-    for (const [key, value] of Object.entries(node)) {
-      if (key === 'loc' || key === 'range' || key === 'start' || key === 'end') continue
-      if (Array.isArray(value)) {
-        for (const child of value) if (isSfcScriptNode(child)) walk(child)
-      } else if (isSfcScriptNode(value)) {
-        walk(value)
-      }
-    }
-  }
-  for (const root of roots) walk(root)
+  for (const node of walkBabelNodes(roots)) visit(node)
 }
 
 function isSfcScriptNode(value: unknown): value is SfcScriptNode {
-  return Boolean(value && typeof value === 'object' && 'type' in value)
+  return value !== null && typeof value === 'object' && 'type' in value && typeof value.type === 'string'
 }
 
 interface SfcSlotEvidence {
@@ -571,23 +567,29 @@ function readSfcTemplateFallthrough(
   return { attributes: 'unknown', listeners: 'unknown', attributeTargets: targets }
 }
 
-function readSfcProps(compiled: SFCScriptBlock): Map<string, PropContract> {
-  const bindings = compiled.bindings ?? {}
-  const fromBindings = new Map(Object.entries(bindings)
-    .filter(([, binding]) => binding === 'props' || binding === 'props-aliased')
+function readSfcProps(compiled: CompiledRuntimeSfc): Map<string, PropContract> {
+  const bindings = compiled.script.bindings ?? {}
+  const props = new Map<string, PropContract>(compiled.props ? [] : Object.entries(bindings)
+    .filter(([, binding]) => binding === 'props')
     .map(([name]) => [name, { name }] as const)
     .sort(([first], [second]) => first.localeCompare(second)))
-
-  return mergeRuntimeProps(
-    fromBindings,
-    mergeRuntimeProps(
-      readScriptAstProps(compiled.scriptAst),
-      mergeRuntimeProps(
-        readDefinePropsFromAst(compiled.scriptSetupAst),
-        readCompiledComponentProps(compiled.content)
-      )
-    )
-  )
+  const authored = compiled.props
+    ? readDefinePropsFromAst(compiled.script.scriptSetupAst)
+    : readScriptAstProps(compiled.script.scriptAst)
+  for (const [name, fallback] of readPropsValueNode(compiled.props)) {
+    const current = authored.get(name)
+    if (!current) {
+      authored.set(name, fallback)
+      continue
+    }
+    // Generated constructors are a lossy rendering of these same authored types.
+    if (!current.types?.length && fallback.types?.length) current.types = fallback.types
+    if (fallback.required === true || (current.required === undefined && fallback.required !== undefined)) {
+      current.required = fallback.required
+    }
+  }
+  for (const [name, prop] of authored) props.set(name, prop)
+  return props
 }
 
 function readScriptAstProps(scriptAst: unknown[] | undefined): Map<string, PropContract> {
@@ -632,20 +634,6 @@ function readDefinePropsFromAst(scriptSetupAst: unknown[] | undefined): Map<stri
   return new Map()
 }
 
-function readCompiledComponentProps(content: string | undefined): Map<string, PropContract> {
-  if (!content) return new Map()
-  try {
-    const body = babelParse(content, { sourceType: 'module', plugins: ['typescript', 'jsx'] }).program.body
-    const exported = body.find(node => node.type === 'ExportDefaultDeclaration')
-    if (exported?.type !== 'ExportDefaultDeclaration') return new Map()
-    const options = exported.declaration.type === 'CallExpression'
-      ? exported.declaration.arguments[0]
-      : exported.declaration
-    return readPropsOptionValue(options)
-  } catch {
-    return new Map()
-  }
-}
 
 
 function readPropsOptionValue(options: any): Map<string, PropContract> {
@@ -860,15 +848,22 @@ function readTsTypeNode(typeNode: any): PropTypeDescriptor[] | undefined {
   if (typeNode.type === 'TSUnionType') {
     const types: PropTypeDescriptor[] = []
     const seen = new Set<string>()
+    let unresolved = false
     for (const part of typeNode.types ?? []) {
-      for (const type of readTsTypeNode(part) ?? []) {
-        const key = type.kind === 'literal' ? `literal:${String(type.value)}` : type.kind
+      const partTypes = readTsTypeNode(part)
+      if (!partTypes?.length) {
+        unresolved = true
+        continue
+      }
+      for (const type of partTypes) {
+        const key = type.kind === 'literal' ? `literal:${typeof type.value}:${String(type.value)}` : type.kind
         if (!seen.has(key)) {
           seen.add(key)
           types.push(type)
         }
       }
     }
+    if (unresolved && !types.some(type => type.kind === 'any' || type.kind === 'unknown')) return undefined
     return types.length > 0 ? types : undefined
   }
 
@@ -923,11 +918,12 @@ function readTsTypeNode(typeNode: any): PropTypeDescriptor[] | undefined {
       if (name === 'Function') {
         return [{ kind: 'function' }]
       }
-      return [{ kind: 'object' }]
+      return undefined
     }
     case 'TSTypeLiteral':
-    case 'TSIntersectionType':
       return [{ kind: 'object' }]
+    case 'TSIntersectionType':
+      return undefined
     default:
       return undefined
   }
@@ -943,24 +939,18 @@ function getBabelCalleeName(node: any): string | undefined {
   return undefined
 }
 
-function* walkBabelNodes(node: any): Generator<any> {
-  if (!node) {
-    return
-  }
+function* walkBabelNodes(node: unknown): Generator<SfcScriptNode> {
   if (Array.isArray(node)) {
-    for (const item of node) {
-      yield* walkBabelNodes(item)
-    }
+    for (const item of node) yield* walkBabelNodes(item)
     return
   }
-  if (typeof node !== 'object') {
-    return
-  }
+  if (!isSfcScriptNode(node)) return
   yield node
-  for (const value of Object.values(node)) {
-    if (value && typeof value === 'object') {
-      yield* walkBabelNodes(value)
-    }
+  for (const key of Object.keys(node)) {
+    // Compiler resolution scopes and parent links are metadata, not syntax children.
+    if (key === 'parent' || key === 'loc' || key === 'range' || key.startsWith('_')) continue
+    const value = node[key]
+    if (Array.isArray(value) || isSfcScriptNode(value)) yield* walkBabelNodes(value)
   }
 }
 
@@ -1606,7 +1596,7 @@ function getPropertyName(node: Node, sourceFile: SourceFile): string | undefined
 function resolveDomDeclarationPath(): string | undefined {
   try {
     const require = createRequire(import.meta.url)
-    const packageRoot = dirname(require.resolve('typescript/package.json'))
+    const packageRoot = dirname(require.resolve('typescript-native/package.json'))
     const platformPackage = `typescript-${process.platform}-${process.arch}`
     return [
       join(packageRoot, 'lib', 'lib.dom.d.ts'),

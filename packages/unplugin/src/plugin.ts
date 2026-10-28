@@ -1,4 +1,5 @@
-import type { DoctorRunOptions } from '@vue-doctor/core'
+import type { DoctorRunOptions } from '@daguanren21/vue-doctor-core'
+import type { VueDoctorUnpluginOptions } from './options.js'
 import type {
   NativeBuildContext,
   UnpluginBuildContext,
@@ -8,12 +9,11 @@ import type {
 import {
   createVueDoctorPlugin,
   runDoctorAndWarn,
-  type VueDoctorViteOptions,
   type VueDoctorViteServices
 } from './vite.js'
 import { createHostDoctorSession, type HostDoctorAnalysisSession } from './session.js'
 
-export type VueDoctorUnpluginOptions = VueDoctorViteOptions
+export type { VueDoctorUnpluginOptions } from './options.js'
 
 export function createVueDoctorUnpluginFactory(
   services: VueDoctorViteServices

@@ -1,4 +1,4 @@
-import type { DoctorReport } from '@vue-doctor/core'
+import type { DoctorReport } from '@daguanren21/vue-doctor-core'
 import type {
   UnpluginBuildContext,
   UnpluginContextMeta,

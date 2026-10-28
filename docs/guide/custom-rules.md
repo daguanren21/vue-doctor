@@ -4,10 +4,10 @@
 
 ## Define and export a pack
 
-The following two files form a runnable local pack. With `vue-doctor` available to your project, save the rule module as `doctor-rules.ts`. Import the public authoring helpers from `vue-doctor/rules`; no internal package paths or additional parser installation are needed for this Oxc example.
+The following two files form a runnable local pack. With `@daguanren21/vue-doctor` available to your project, save the rule module as `doctor-rules.ts`. Import the public authoring helpers from `@daguanren21/vue-doctor/rules`; no internal package paths or additional parser installation are needed for this Oxc example.
 
 ```ts
-import { defineRule, defineRules, oxcRule } from 'vue-doctor/rules'
+import { defineRule, defineRules, oxcRule } from '@daguanren21/vue-doctor/rules'
 
 export const teamRules = defineRules({
   name: 'team',
@@ -57,7 +57,7 @@ export const teamRules = defineRules({
 Save this executable configuration as `doctor.config.ts` beside the module:
 
 ```ts
-import { defineDoctorConfig } from 'vue-doctor'
+import { defineDoctorConfig } from '@daguanren21/vue-doctor'
 import { teamRules } from './doctor-rules.ts'
 
 export default defineDoctorConfig({
@@ -71,7 +71,9 @@ export default defineDoctorConfig({
 
 `defineRule` defines each check; `oxcRule` supplies its script AST visitor; `defineRules` combines the checks into one exported pack. The pack name and rule keys produce `team/no-var` and `team/no-debugger`. Use those full codes in `rules` to choose `error`, `warning`, `info`, or `off`. Custom rules use the normal rule catalog, suppression audit, and coverage gates. An unknown rule code in `config.rules` is a configuration error, even when its severity is `off`.
 
-For shared use, export `teamRules` from your package's public entry point and import that export in the consuming project's config instead of the relative module. Keep `vue-doctor` available to the consumer and declare it as a compatible peer dependency of a reusable rule package. Use the documented `vue-doctor/rules` entry point rather than workspace source paths. Doctor does not install or download rule packs: the package must already be resolvable from the project.
+`defineRules` records execution evidence automatically. When implementing `DoctorRulePack.run` directly, return a `checks` record for every enabled rule. Missing execution evidence makes coverage incomplete; an empty `diagnostics` list alone never proves a clean run. Declared manual, runtime and policy-pending verification remains pending until explicitly satisfied.
+
+For shared use, export `teamRules` from your package's public entry point and import that export in the consuming project's config instead of the relative module. Keep `@daguanren21/vue-doctor` available to the consumer and declare it as a compatible peer dependency of a reusable rule package. Use the documented `@daguanren21/vue-doctor/rules` entry point rather than workspace source paths. Doctor does not install or download rule packs: the package must already be resolvable from the project.
 
 Configuration and imported packs are trusted executable code. JSON configuration cannot import rule functions. Register each imported pack in `rulePacks`; importing a module alone does not enable it. An inline API `rulePacks` list replaces the file-configured list; `[]` disables external packs.
 
@@ -106,11 +108,11 @@ The `requires` capability flags are `syntax`, `scope`, and `types`. Oxc supplies
 
 Rule metadata can also declare `meta.requires` for source blocks and Vue-version evidence. Component ownership and contract evidence requirements are unavailable to this script adapter and produce required skips. Rules marked `manual`, `runtime`, or `policy-pending` retain those verification states; an AST traversal cannot complete their acceptance checks.
 
-For ESLint selectors, comments, lexical scope, Vue template parser services or project types, use the ESTree adapter from `vue-doctor/rules-eslint`:
+For ESLint selectors, comments, lexical scope, Vue template parser services or project types, use the ESTree adapter from `@daguanren21/vue-doctor/rules-eslint`:
 
 ```ts
-import { defineRule, defineRules } from 'vue-doctor/rules'
-import { estreeRule } from 'vue-doctor/rules-eslint'
+import { defineRule, defineRules } from '@daguanren21/vue-doctor/rules'
+import { estreeRule } from '@daguanren21/vue-doctor/rules-eslint'
 
 const teamRules = defineRules({
   name: 'team',
@@ -132,6 +134,6 @@ const teamRules = defineRules({
 })
 ```
 
-`eslintRule({ module, options, typed: true })` accepts official RuleModules or checks requiring a real consumer TypeScript program and node maps. Typed checks require the project's `tsconfig.json` or `jsconfig.json`. Vue template services use the `vue-eslint-parser` AST; Vue compiler-sfc extracts the SFC descriptor and original script text. This path retains the Node 20 baseline and Vue 2.7/3 support.
+`eslintRule({ module, options, typed: true })` accepts official RuleModules or checks requiring a real consumer TypeScript program and node maps. Typed checks require the project's `tsconfig.json` or `jsconfig.json`. Vue template services use the `vue-eslint-parser` AST; Vue compiler-sfc extracts the SFC descriptor and original script text. The single-package runtime requires Node 22.18+ or 24.11+ and retains Vue 2.7/3 support.
 
 The same ESLint engine batches independently registered rules, using at most one ordinary pass and one typed pass per document. ESTree checks share that pass's parser context and should treat the AST as read-only; Oxc/Babel checks still receive independent AST copies. Graph analysis, original-byte checks and other parsers can use `defineRuleEngine` and `engineRule` with the same `defineRules` API. Each rule must return an execution record; exceptions, missing records and invalid outputs produce required skips.

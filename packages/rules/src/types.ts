@@ -4,9 +4,9 @@ import type {
   DiagnosticSeverity,
   DoctorRuleDefinition,
   EvidenceLocation
-} from '@vue-doctor/core'
-import type { DoctorRulePackContext, DoctorRulePackResult } from '@vue-doctor/core'
-import type { SourceDocument, SourceDocumentBlock } from '@vue-doctor/source'
+} from '@daguanren21/vue-doctor-core'
+import type { DoctorRulePackContext, DoctorRulePackResult } from '@daguanren21/vue-doctor-core'
+import type { SourceDocument, SourceDocumentBlock } from '@daguanren21/vue-doctor-source'
 import type { Node as BabelNode } from '@babel/types'
 import type { ParserOptions as BabelParserOptions } from '@babel/parser'
 import type { Visitor as BabelTraverseVisitor } from '@babel/traverse'

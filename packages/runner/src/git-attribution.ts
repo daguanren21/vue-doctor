@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process'
 import { access } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { promisify } from 'node:util'
-import type { Diagnostic, GitAttribution } from '@vue-doctor/core'
+import type { Diagnostic, GitAttribution } from '@daguanren21/vue-doctor-core'
 import pMap from 'p-map'
 
 const execFileAsync = promisify(execFile)

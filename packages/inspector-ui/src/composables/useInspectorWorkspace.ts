@@ -23,7 +23,7 @@ import type {
   InspectorSharedState,
   InspectorSnapshot,
   InspectorSnippet
-} from '@vue-doctor/inspector-protocol'
+} from '@daguanren21/vue-doctor-inspector-protocol'
 import type { InspectorTransport } from '../transport'
 import type { InspectorConnectionEvent } from '../transport'
 import type { InspectorRoute } from './useInspectorRoute'

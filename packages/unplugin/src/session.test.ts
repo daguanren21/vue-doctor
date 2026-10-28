@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events'
 import { expect, test, vi } from 'vitest'
-import type { DoctorReport } from '@vue-doctor/core'
+import type { DoctorReport } from '@daguanren21/vue-doctor-core'
 import { createHostDoctorSession } from './session.js'
 import { createVueDoctorPlugin } from './vite.js'
 

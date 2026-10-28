@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'vitest'
-import { shouldFailDoctorRun } from '@vue-doctor/core'
+import { shouldFailDoctorRun } from '@daguanren21/vue-doctor-core'
 import { runDoctor } from './run.js'
 
 test.each(['App.vue', 'state.ts'])('invalid UTF-8 in %s keeps coverage incomplete and prevents suppression', async (name) => {

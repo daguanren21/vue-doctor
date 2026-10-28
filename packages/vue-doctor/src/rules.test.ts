@@ -2,8 +2,8 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, test } from 'vitest'
-import { createDoctorAnalysisSession, runDoctor } from '@vue-doctor/runner'
-import { shouldFailDoctorRun } from '@vue-doctor/core'
+import { createDoctorAnalysisSession, runDoctor } from '@daguanren21/vue-doctor-runner'
+import { shouldFailDoctorRun } from '@daguanren21/vue-doctor-core'
 import { defineRule, defineRules, oxcRule } from './rules.js'
 
 const roots: string[] = []

@@ -806,7 +806,7 @@ function renderEvidence() {
   const ruleTab = `
     <dl class="defs">
       <dt>Rule</dt><dd>${d.code} <button class="lbtn" style="height:20px;padding:0 5px;margin-left:4px" title="Copy rule code"><svg class="ic ic-xs"><use href="#i-copy"/></svg></button></dd>
-      <dt>Pack</dt><dd>${d.cat === "component-library" ? "@vue-doctor/rule-pack-component-library" : "vue-writing"}</dd>
+      <dt>Pack</dt><dd>${d.cat === "component-library" ? "@daguanren21/vue-doctor-rule-pack-component-library" : "vue-writing"}</dd>
       <dt>Severity</dt><dd>${SEV[d.sev].label.toLowerCase()} (default)</dd>
       <dt>Confidence</dt><dd>${d.conf}${d.conf === "high" && p ? " — matched installed contract via " + p.prov.split(" ·")[0] : ""}</dd>
     </dl>

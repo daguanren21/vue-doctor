@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { DoctorDomainCoverage } from '@vue-doctor/core'
+import type { DoctorDomainCoverage } from '@daguanren21/vue-doctor-core'
 import type { InspectorLocale, inspectorMessages } from '../i18n'
 import { domainLabel, domainStatusLabel } from '../lib/domains'
 

@@ -2,9 +2,9 @@ import type {
   ComponentContract,
   ComponentContractMap,
   ComponentLibraryEvidence
-} from '@vue-doctor/component-library'
-import type { Diagnostic, SkippedCheck } from '@vue-doctor/core'
-import type { VueComponentUsage } from '@vue-doctor/source'
+} from '@daguanren21/vue-doctor-component-library'
+import type { Diagnostic, SkippedCheck } from '@daguanren21/vue-doctor-core'
+import type { VueComponentUsage } from '@daguanren21/vue-doctor-source'
 
 export interface DiagnoseComponentLibraryUsageOptions {
   matches: ComponentUsageContractMatch[]

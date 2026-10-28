@@ -74,9 +74,9 @@ export function createVueDoctorDevframe(options: CreateVueDoctorDevframeOptions)
     id: VUE_DOCTOR_DEVFRAME_ID,
     name: 'Vue Doctor',
     version: options.version ?? '0.0.0',
-    packageName: '@vue-doctor/inspector',
+    packageName: '@daguanren21/vue-doctor',
     importMetaUrl: import.meta.url,
-    homepage: 'https://www.npmjs.com/package/vue-doctor',
+    homepage: 'https://www.npmjs.com/package/@daguanren21/vue-doctor',
     description: 'Inspect Vue diagnostics, evidence, coverage, rules, and suppression audits.',
     icon: VUE_DOCTOR_ICON,
     dock: {

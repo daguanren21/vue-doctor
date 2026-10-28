@@ -1,3 +1,4 @@
+import { resolveImportedBinding, type ScriptBindingFacts } from './bindings.js'
 import type { VueComponentOrigin, VuePackageReference } from './types.js'
 
 export interface PackageImportEvidence {
@@ -11,11 +12,13 @@ type ProgramNode = {
 
 type ImportDeclarationNode = {
   type?: string
+  importKind?: string
   source?: {
     value?: unknown
   }
   specifiers?: Array<{
     type?: string
+    importKind?: string
     local?: {
       name?: string
     }
@@ -31,6 +34,7 @@ type AstNode = {
   name?: string
   value?: unknown
   id?: AstNode
+  declaration?: AstNode
   init?: AstNode
   key?: AstNode
   source?: AstNode
@@ -38,6 +42,7 @@ type AstNode = {
   object?: AstNode
   property?: AstNode
   computed?: boolean
+  kind?: string
   arguments?: AstNode[]
   properties?: AstNode[]
 }
@@ -64,19 +69,22 @@ export function collectPackageImports(program: ProgramNode): Map<string, Package
   return imports
 }
 
-export function collectDirectImportOrigins(program: ProgramNode): Map<string, VueComponentOrigin> {
+export function collectDirectImportOrigins(
+  program: ProgramNode,
+  templateContext?: { scriptSetup: boolean; bindings: ScriptBindingFacts }
+): Map<string, VueComponentOrigin> {
   const origins = new Map<string, VueComponentOrigin>()
 
   for (const statement of program.body ?? []) {
     const declaration = statement as ImportDeclarationNode
-    if (declaration.type !== 'ImportDeclaration' || typeof declaration.source?.value !== 'string') {
+    if (declaration.type !== 'ImportDeclaration' || declaration.importKind === 'type' || typeof declaration.source?.value !== 'string') {
       continue
     }
     const source = declaration.source.value
     const packageReference = getPackageReference(declaration)
     for (const specifier of declaration.specifiers ?? []) {
       const localName = specifier.local?.name
-      if (!localName) continue
+      if (!localName || specifier.importKind === 'type') continue
       if (packageReference) {
         const importedName = getImportedName(specifier)
         if (importedName) {
@@ -92,6 +100,8 @@ export function collectDirectImportOrigins(program: ProgramNode): Map<string, Vu
       }
     }
   }
+
+  const imports = new Map(origins)
 
   visitAst(program as AstNode, (node) => {
     if (
@@ -121,12 +131,80 @@ export function collectDirectImportOrigins(program: ProgramNode): Map<string, Vu
     }
   })
 
+  if (templateContext) {
+    markComponentsOptionOrigins(program, imports, origins, templateContext.bindings)
+    if (templateContext.scriptSetup) {
+      for (const binding of templateContext.bindings.scopes[0]?.bindings ?? []) {
+        if (binding.kind !== 'import') continue
+        const origin = imports.get(binding.name)
+        if (origin && origin.importSource === binding.source && origin.importedName === binding.imported) {
+          origins.set(binding.name, { ...origin, templateBinding: 'script-setup' })
+        }
+      }
+    }
+  }
+
   return origins
+}
+
+function markComponentsOptionOrigins(
+  program: ProgramNode,
+  imports: ReadonlyMap<string, VueComponentOrigin>,
+  origins: Map<string, VueComponentOrigin>,
+  bindings: ScriptBindingFacts
+): void {
+  for (const statement of program.body ?? []) {
+    if (!isAstNode(statement) || statement.type !== 'ExportDefaultDeclaration') continue
+    let options = statement.declaration
+    let factorySource: string | undefined
+    if (options?.type === 'CallExpression') {
+      const callee = options.callee
+      const binding = resolveImportedBinding(bindings, callee?.type === 'MemberExpression' ? callee.object : callee)
+      const importedName = callee?.type === 'MemberExpression' && !callee.computed && binding?.imported === '*'
+        ? propertyName(callee.property)
+        : callee?.type === 'Identifier' ? binding?.imported : undefined
+      if (importedName !== 'defineComponent' || options.arguments?.length !== 1) continue
+      factorySource = binding?.source
+      options = options.arguments[0]
+    }
+    if (options?.type !== 'ObjectExpression') continue
+    // An unknown spread/computed option can replace the entire components table.
+    if (options.properties?.some((property) => property.type !== 'Property' || property.computed)) continue
+    const registrations = options.properties?.filter((property) => propertyName(property.key) === 'components')
+    if (registrations?.length !== 1) continue
+    const components = registrations[0]?.value
+    if (!isAstNode(components) || components.type !== 'ObjectExpression') continue
+    if (components.properties?.some((property) => property.type !== 'Property' || property.computed || property.kind === 'get' || property.kind === 'set')) continue
+    const names = new Set<string>()
+    const duplicates = new Set<string>()
+    for (const property of components.properties ?? []) {
+      const name = propertyName(property.key)
+      if (!name) continue
+      if (names.has(name)) duplicates.add(name)
+      names.add(name)
+    }
+    for (const property of components.properties ?? []) {
+      const name = propertyName(property.key)
+      const value = property.value
+      if (!name || duplicates.has(name) || !isAstNode(value)) continue
+      const identifier = value.type === 'MemberExpression' ? value.object : value
+      const binding = resolveImportedBinding(bindings, identifier)
+      if (!binding || !identifier?.name) continue
+      if (value.type === 'MemberExpression' && (value.computed || binding.imported !== '*')) continue
+      const imported = imports.get(identifier.name)
+      if (!imported || imported.importSource !== binding.source || imported.importedName !== binding.imported) continue
+      // A wrapper is trusted only alongside imports from that same package. The
+      // runner still verifies that package's canonical Vue identity and version.
+      if (factorySource && factorySource !== imported.importSource) continue
+      const origin = componentValueOrigin(value, imports)
+      if (origin) origins.set(name, { ...origin, templateBinding: 'components-option' })
+    }
+  }
 }
 
 function componentValueOrigin(
   value: AstNode,
-  origins: Map<string, VueComponentOrigin>
+  origins: ReadonlyMap<string, VueComponentOrigin>
 ): VueComponentOrigin | undefined {
   if (value.type === 'Identifier' && value.name) return origins.get(value.name)
   if (

@@ -1,6 +1,6 @@
 import { effectScope, nextTick, ref } from 'vue'
 import { describe, expect, test, vi } from 'vitest'
-import type { InspectorSharedState, InspectorSnapshot } from '@vue-doctor/inspector-protocol'
+import type { InspectorSharedState, InspectorSnapshot } from '@daguanren21/vue-doctor-inspector-protocol'
 import type { InspectorTransport } from '../transport'
 import type { InspectorConnectionEvent } from '../transport'
 import { useInspectorWorkspace } from './useInspectorWorkspace'
