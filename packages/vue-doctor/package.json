@@ -64,7 +64,7 @@
     "@babel/parser": "8.0.6",
     "@babel/traverse": "8.0.6",
     "@babel/types": "8.0.6",
-    "@devframes/agentic": "1.2.1",
+    "@devframes/agentic": "1.2.6",
     "@devframes/hub": "1.2.1",
     "@devframes/hub-ui": "1.2.1",
     "@typescript-eslint/parser": "8.72.0",
