@@ -12,6 +12,7 @@
 - Evaluate rule applicability once per distinct owning Vue version without changing package overrides, unavailable checks or source coverage.
 - Keep declaration-cache isolation and invalidation tests on real persistent fixtures without redundant repeated reads or increased timeouts.
 - Run the public-workspace verification gate on pull requests with read-only GitHub permissions before release integration.
+- Synchronize the lockfile with Piscina 5.3.2 and resolve Lucide icons to 2.0.25 so frozen installs pass without relaxing the existing minimum-release-age policy.
 
 ## 0.1.0
 
