@@ -17,12 +17,13 @@ import type {
 import {
   extractComponentLibraryContracts,
   extractComponentLibraryContractsWithReaders,
-  getContractExtractionCacheStateForTests,
   mergeComponentContractMaps
 } from './merge.js'
-import { createContractCacheKey } from './cache.js'
+import { createContractCacheKey, readContractCache } from './cache.js'
 
 const fixtureRoots: string[] = []
+// Inferred native TypeScript projects have no fingerprintable config and bypass persistence.
+const persistentDeclarationConfig = JSON.stringify({ compilerOptions: { noEmit: true }, files: ['index.d.ts'] })
 
 afterEach(async () => {
   await Promise.all(fixtureRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
@@ -801,6 +802,7 @@ export default { props: { mode: Number, obsolete: Boolean } }
     const cacheDirectory = await mkdtemp(join(tmpdir(), 'vue-doctor-contract-cache-transitive-'))
     fixtureRoots.push(cacheDirectory)
     const evidence = await createFixture({
+      'tsconfig.json': persistentDeclarationConfig,
       'index.d.ts': 'export { ExampleButton } from "./leaf"\n',
       'leaf.d.ts': 'export declare class ExampleButton { $props: { label: string } }\n'
     }, { types: './index.d.ts' })
@@ -809,6 +811,8 @@ export default { props: { mode: Number, obsolete: Boolean } }
     evidence.cacheDirectory = cacheDirectory
 
     const first = await extractComponentLibraryContracts(evidence)
+    const key = await createContractCacheKey(evidence)
+    expect(await readContractCache(key!, cacheDirectory)).toEqual(first)
     first.components.get('ExampleButton')!.props.entries.delete('label')
     const hot = await extractComponentLibraryContracts(evidence)
     expect(hot.components.get('ExampleButton')?.props.entries.has('label')).toBe(true)
@@ -826,6 +830,7 @@ export default { props: { mode: Number, obsolete: Boolean } }
     const cacheDirectory = await mkdtemp(join(tmpdir(), 'vue-doctor-contract-cache-probe-'))
     fixtureRoots.push(cacheDirectory)
     const evidence = await createFixture({
+      'tsconfig.json': persistentDeclarationConfig,
       'index.d.ts': 'export { ExampleButton } from "./leaf"\n'
     }, { types: './index.d.ts' })
     evidence.runtime = false
@@ -833,6 +838,8 @@ export default { props: { mode: Number, obsolete: Boolean } }
     evidence.cacheDirectory = cacheDirectory
 
     const missing = await extractComponentLibraryContracts(evidence)
+    const key = await createContractCacheKey(evidence)
+    expect(await readContractCache(key!, cacheDirectory)).toEqual(missing)
     expect(missing.components.has('ExampleButton')).toBe(false)
 
     await writeFile(
@@ -844,10 +851,11 @@ export default { props: { mode: Number, obsolete: Boolean } }
     expect(resolved.components.get('ExampleButton')?.props.entries.has('label')).toBe(true)
   })
 
-  test('returns isolated cold, concurrent, and hot contract maps without retaining completed inflight work', async () => {
+  test('isolates concurrent and persistent cache results from caller mutations', async () => {
     const cacheDirectory = await mkdtemp(join(tmpdir(), 'vue-doctor-contract-cache-clone-'))
     fixtureRoots.push(cacheDirectory)
     const evidence = await createFixture({
+      'tsconfig.json': persistentDeclarationConfig,
       'index.d.ts': 'export declare class ExampleButton { $props: { label: string } }\n'
     }, { types: './index.d.ts' })
     evidence.runtime = false
@@ -861,15 +869,19 @@ export default { props: { mode: Number, obsolete: Boolean } }
     ])
     expect(concurrent[0]).toEqual(concurrent[1])
     expect(concurrent[1]).toEqual(concurrent[2])
-    expect(new Set(concurrent.map((result) => result.components)).size).toBe(3)
+    expect(new Set(concurrent.map(result => result.components)).size).toBe(3)
+    const key = await createContractCacheKey(evidence)
+    expect(await readContractCache(key!, cacheDirectory)).toEqual(concurrent[1])
+    expect(concurrent[0]!.components.get('ExampleButton')?.props.entries.has('label')).toBe(true)
     concurrent[0]!.components.get('ExampleButton')!.props.entries.clear()
     expect(concurrent[1]!.components.get('ExampleButton')?.props.entries.has('label')).toBe(true)
+    expect(concurrent[2]!.components.get('ExampleButton')?.props.entries.has('label')).toBe(true)
 
-    for (let index = 0; index < 40; index++) {
-      const hot = await extractComponentLibraryContracts(evidence)
-      expect(hot).toEqual(concurrent[1])
-    }
-    expect(getContractExtractionCacheStateForTests()).toEqual({ size: 0, limit: 32 })
+    const hot = await extractComponentLibraryContracts(evidence)
+    expect(hot).toEqual(concurrent[1])
+    hot.components.get('ExampleButton')!.props.entries.clear()
+    expect(concurrent[1]!.components.get('ExampleButton')?.props.entries.has('label')).toBe(true)
+    expect(await extractComponentLibraryContracts(evidence)).toEqual(concurrent[1])
   })
 
   test('does not cache package identities declared through a local workspace link', async () => {
