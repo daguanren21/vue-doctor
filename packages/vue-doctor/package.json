@@ -67,7 +67,7 @@
     "@devframes/agentic": "1.2.1",
     "@devframes/hub": "1.2.1",
     "@devframes/hub-ui": "1.2.1",
-    "@typescript-eslint/parser": "8.72.0",
+    "@typescript-eslint/parser": "8.72.1",
     "@vue/compiler-sfc": "3.5.39",
     "@vue/shared": "3.5.44",
     "agent-install": "^0.0.8",

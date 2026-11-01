@@ -14,7 +14,7 @@
     }
   },
   "dependencies": {
-    "@typescript-eslint/parser": "8.72.0",
+    "@typescript-eslint/parser": "8.72.1",
     "@vue/compiler-sfc": "3.5.39",
     "espree": "11.2.0",
     "typescript": "6.0.3",
