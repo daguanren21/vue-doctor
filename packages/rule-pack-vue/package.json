@@ -20,7 +20,7 @@
   "dependencies": {
     "@daguanren21/vue-doctor-core": "workspace:*",
     "@daguanren21/vue-doctor-source": "workspace:*",
-    "@vue/shared": "3.5.44"
+    "@vue/shared": "3.5.45"
   },
   "scripts": {
     "build": "tsdown src/index.ts src/rules.ts --format esm --dts",

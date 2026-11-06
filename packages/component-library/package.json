@@ -19,7 +19,7 @@
   },
   "dependencies": {
     "@daguanren21/vue-doctor-core": "workspace:*",
-    "@vue/compiler-sfc": "3.5.39",
+    "@vue/compiler-sfc": "3.5.45",
     "resolve.exports": "2.0.3",
     "typescript-native": "npm:typescript@7.0.2"
   }
